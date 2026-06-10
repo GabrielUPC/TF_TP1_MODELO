@@ -214,8 +214,8 @@ def crear_indicadores(df: pd.DataFrame) -> pd.DataFrame:
         0.0,
     )
     resultado["ratio_camas_disponibles"] = np.where(
-        camas > 0,
-        camas_disponibles / camas,
+        capacidad_mensual > 0,
+        camas_disponibles / capacidad_mensual,
         0.0,
     )
     resultado["ocupacion_estimada"] = np.where(
@@ -224,9 +224,9 @@ def crear_indicadores(df: pd.DataFrame) -> pd.DataFrame:
         0.0,
     )
     resultado["presion_ingresos_camas"] = np.where(
-        camas_disponibles > 0,
-        resultado["NRO_TOTAL_HOSPIT_ING"] / camas_disponibles,
-        0.0,
+        camas > 0,
+        resultado["NRO_TOTAL_HOSPIT_ING"] / camas,
+        resultado["NRO_TOTAL_HOSPIT_ING"],
     )
     resultado["rotacion_camas"] = np.where(
         camas > 0,
@@ -238,6 +238,27 @@ def crear_indicadores(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return resultado
+
+
+def mostrar_validaciones_indicadores(df: pd.DataFrame) -> None:
+    indicadores = [
+        "ratio_camas_disponibles",
+        "ocupacion_estimada",
+        "presion_ingresos_camas",
+    ]
+
+    print("\nEstadísticos descriptivos de los indicadores:")
+    print(df[indicadores].describe().transpose())
+
+    ratios_atipicos = df["ratio_camas_disponibles"].gt(1.5)
+    if ratios_atipicos.any():
+        print(
+            "\nADVERTENCIA: se encontraron "
+            f"{int(ratios_atipicos.sum())} registros con "
+            "ratio_camas_disponibles mayor a 1.5. Revise si "
+            "NRO_TOTAL_CAMAS_DISPONIB representa camas-día disponibles "
+            "de manera consistente."
+        )
 
 
 def crear_variable_objetivo(df: pd.DataFrame) -> pd.DataFrame:
@@ -300,6 +321,7 @@ def preparar_dataset() -> pd.DataFrame:
     print(f"Columnas finales: {df.columns.tolist()}")
     print("\nDistribución de categoria_ipress:")
     print(df["categoria_ipress"].value_counts(dropna=False))
+    mostrar_validaciones_indicadores(df)
     print("\nDistribución de nivel_riesgo:")
     print(df["nivel_riesgo"].value_counts(dropna=False))
     print("\nDistribución de nivel_riesgo_codificado:")

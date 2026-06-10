@@ -8,6 +8,11 @@ El modelo analiza disponibilidad y uso de camas. No asigna camas
 automáticamente, no reemplaza decisiones clínicas y no funciona como historia
 clínica electrónica.
 
+Trabaja únicamente con información mensual agregada por IPRESS, mes y servicio
+hospitalario. El archivo original debe estar disponible en
+`data/raw/ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv` antes de
+preparar los datos.
+
 ## Estructura
 
 ```text
@@ -60,6 +65,31 @@ py src/preparar_dataset.py
 
 El proceso filtra IPRESS públicas de Lima Metropolitana, calcula indicadores
 hospitalarios y genera `data/processed/dataset_modelo_ipress.csv`.
+
+### Indicadores
+
+El dataset procesado contiene:
+
+- `promedio_estancia`: estancias totales / egresos hospitalarios.
+- `tasa_fallecidos`: fallecidos / egresos hospitalarios.
+- `ratio_camas_disponibles`: camas disponibles o habilitadas del mes /
+  capacidad mensual.
+- `ocupacion_estimada`: pacientes-cama / capacidad mensual.
+- `presion_ingresos_camas`: ingresos hospitalarios / camas totales.
+- `rotacion_camas`: egresos hospitalarios / camas totales.
+- `diferencia_ingresos_egresos`: ingresos hospitalarios - egresos
+  hospitalarios.
+
+La capacidad mensual se calcula como:
+
+```text
+capacidad mensual = camas totales * días del mes
+```
+
+Esta normalización considera que `NRO_TOTAL_CAMAS_DISPONIB` representa
+disponibilidad acumulada en camas-día durante el mes. Al preparar el dataset se
+imprimen estadísticas descriptivas de los principales indicadores y una
+advertencia si `ratio_camas_disponibles` supera `1.5`.
 
 Entrenar y comparar los modelos:
 
