@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import joblib
@@ -34,6 +35,8 @@ MODELS_DIR = PROJECT_ROOT / "models"
 MODEL_PATH = MODELS_DIR / "modelo_ipress.joblib"
 METRICAS_PATH = MODELS_DIR / "metricas_modelo.csv"
 CLASES_PATH = MODELS_DIR / "clases_riesgo.json"
+METADATA_PATH = MODELS_DIR / "model_metadata.json"
+IMPORTANCIA_PATH = MODELS_DIR / "importancia_variables.csv"
 
 VARIABLE_OBJETIVO = "nivel_riesgo_codificado"
 CLASES_RIESGO = {0: "bajo", 1: "medio", 2: "alto"}
@@ -47,6 +50,13 @@ COLUMNAS_IDENTIFICADOR = [
     "codigo_ipress",
     "id_hospitalizacion",
 ]
+ADVERTENCIA_METODOLOGICA = (
+    "La variable objetivo se construye mediante reglas aplicadas a los "
+    "indicadores del mismo mes y esos indicadores también se usan como "
+    "predictores. Una métrica alta mide principalmente la capacidad de "
+    "reproducir esas reglas y no demuestra por sí sola capacidad de "
+    "pronóstico futuro."
+)
 
 
 def cargar_dataset() -> pd.DataFrame:
@@ -211,6 +221,77 @@ def guardar_clases() -> None:
     )
 
 
+def guardar_importancia_variables(modelo: Pipeline) -> bool:
+    estimador = modelo.named_steps["modelo"]
+    importancias = getattr(estimador, "feature_importances_", None)
+    if importancias is None:
+        if IMPORTANCIA_PATH.exists():
+            IMPORTANCIA_PATH.unlink()
+        print(
+            "ADVERTENCIA: el mejor modelo no expone feature_importances_. "
+            "No se generó importancia_variables.csv."
+        )
+        return False
+
+    try:
+        preprocesador = modelo.named_steps["preprocesador"]
+        nombres = preprocesador.get_feature_names_out()
+        if len(nombres) != len(importancias):
+            raise ValueError(
+                "La cantidad de nombres transformados no coincide con las "
+                "importancias del modelo."
+            )
+
+        pd.DataFrame(
+            {
+                "variable": nombres,
+                "importancia": importancias,
+            }
+        ).sort_values(
+            "importancia",
+            ascending=False,
+        ).to_csv(
+            IMPORTANCIA_PATH,
+            index=False,
+            encoding="utf-8-sig",
+        )
+        return True
+    except (AttributeError, TypeError, ValueError) as error:
+        if IMPORTANCIA_PATH.exists():
+            IMPORTANCIA_PATH.unlink()
+        print(
+            "ADVERTENCIA: no se pudo extraer la importancia de variables: "
+            f"{error}"
+        )
+        return False
+
+
+def guardar_metadata(
+    mejor_nombre: str,
+    mejor_f1: float,
+    df: pd.DataFrame,
+    X: pd.DataFrame,
+    importancia_generada: bool,
+) -> None:
+    metadata = {
+        "mejor_modelo": mejor_nombre,
+        "f1_macro": mejor_f1,
+        "fecha_entrenamiento": datetime.now(timezone.utc).isoformat(),
+        "numero_filas_dataset": int(df.shape[0]),
+        "numero_columnas_predictoras": int(X.shape[1]),
+        "clases": {
+            str(clase): nombre for clase, nombre in CLASES_RIESGO.items()
+        },
+        "columnas_predictoras": X.columns.tolist(),
+        "importancia_variables_generada": importancia_generada,
+        "advertencia_metodologica": ADVERTENCIA_METODOLOGICA,
+    }
+    METADATA_PATH.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def entrenar_modelos() -> Pipeline:
     print("Cargando dataset procesado...")
     df = cargar_dataset()
@@ -269,6 +350,14 @@ def entrenar_modelos() -> Pipeline:
         "f1_macro", ascending=False
     ).to_csv(METRICAS_PATH, index=False, encoding="utf-8-sig")
     guardar_clases()
+    importancia_generada = guardar_importancia_variables(mejor_modelo)
+    guardar_metadata(
+        mejor_nombre,
+        mejor_f1,
+        df,
+        X,
+        importancia_generada,
+    )
 
     print("\n" + "=" * 70)
     print("ENTRENAMIENTO FINALIZADO")
@@ -279,6 +368,9 @@ def entrenar_modelos() -> Pipeline:
     print(f"Modelo guardado: {MODEL_PATH}")
     print(f"Métricas guardadas: {METRICAS_PATH}")
     print(f"Clases guardadas: {CLASES_PATH}")
+    print(f"Metadata guardada: {METADATA_PATH}")
+    if importancia_generada:
+        print(f"Importancia de variables guardada: {IMPORTANCIA_PATH}")
     return mejor_modelo
 
 

@@ -1,8 +1,7 @@
-from typing import Dict
-
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.indicadores import agregar_indicadores_registro
 from src.predecir import predecir_riesgo
 
 
@@ -42,21 +41,13 @@ class DatosPrediccion(BaseModel):
     total_camas: float = Field(ge=0)
     total_camas_disponibles: float = Field(ge=0)
     total_fallecidos: float = Field(ge=0)
-    dias_mes: int = Field(ge=28, le=31)
-    promedio_estancia: float = Field(ge=0)
-    tasa_fallecidos: float = Field(ge=0)
-    ratio_camas_disponibles: float = Field(ge=0)
-    ocupacion_estimada: float = Field(ge=0)
-    presion_ingresos_camas: float = Field(ge=0)
-    rotacion_camas: float = Field(ge=0)
-    diferencia_ingresos_egresos: float
 
 
 class ResultadoPrediccion(BaseModel):
     nivel_riesgo: str
     nivel_riesgo_codificado: int
     probabilidad: float
-    probabilidades_por_clase: Dict[str, float]
+    probabilidades_por_clase: dict[str, float]
     mensaje: str
 
 
@@ -78,7 +69,8 @@ def health() -> dict[str, str]:
 @app.post("/predict", response_model=ResultadoPrediccion)
 def predict(datos: DatosPrediccion) -> dict:
     try:
-        resultado = predecir_riesgo(datos.model_dump())
+        registro_completo = agregar_indicadores_registro(datos.model_dump())
+        resultado = predecir_riesgo(registro_completo)
         resultado["mensaje"] = MENSAJE_REFERENCIAL
         return resultado
     except (TypeError, ValueError) as error:

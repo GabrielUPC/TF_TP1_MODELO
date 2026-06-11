@@ -4,6 +4,11 @@ import re
 import numpy as np
 import pandas as pd
 
+if __package__:
+    from .indicadores import agregar_indicadores_dataframe
+else:
+    from indicadores import agregar_indicadores_dataframe
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DATA_PATH = (
@@ -85,16 +90,35 @@ RENOMBRE_COLUMNAS = {
     "NRO_TOTAL_FALLECIDOS": "total_fallecidos",
 }
 
+MENSAJE_CSV_VACIO = (
+    "El archivo CSV original está vacío. Coloque el dataset real en "
+    "data/raw/ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv antes "
+    "de ejecutar el procesamiento."
+)
+
 
 def leer_csv(path: Path) -> pd.DataFrame:
     if not path.is_file():
-        raise FileNotFoundError(f"No se encontró el archivo fuente: {path}")
+        raise FileNotFoundError(
+            f"No se encontró el archivo CSV original: {path}. "
+            "Coloque el dataset real antes de ejecutar el procesamiento."
+        )
+    if path.stat().st_size == 0:
+        raise ValueError(MENSAJE_CSV_VACIO)
 
     for encoding in ("utf-8-sig", "latin1"):
         try:
-            return pd.read_csv(path, encoding=encoding, dtype=str)
+            df = pd.read_csv(path, encoding=encoding, dtype=str)
         except UnicodeDecodeError:
             continue
+        except pd.errors.EmptyDataError as error:
+            raise ValueError(MENSAJE_CSV_VACIO) from error
+
+        if df.columns.empty:
+            raise ValueError("El archivo CSV original no contiene columnas.")
+        if df.empty:
+            raise ValueError(MENSAJE_CSV_VACIO)
+        return df
 
     raise ValueError(f"No se pudo determinar la codificación del archivo: {path}")
 
@@ -189,55 +213,8 @@ def consolidar_dataset(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def crear_indicadores(df: pd.DataFrame) -> pd.DataFrame:
-    resultado = df.copy()
-    resultado["dias_mes"] = pd.to_datetime(
-        {
-            "year": resultado["ANHO"],
-            "month": resultado["MES"],
-            "day": 1,
-        }
-    ).dt.days_in_month
-
-    egresos = resultado["NRO_TOTAL_HOSPIT_EGR"]
-    camas = resultado["NRO_TOTAL_CAMAS"]
-    camas_disponibles = resultado["NRO_TOTAL_CAMAS_DISPONIB"]
-    capacidad_mensual = camas * resultado["dias_mes"]
-
-    resultado["promedio_estancia"] = np.where(
-        egresos > 0,
-        resultado["NRO_TOTAL_ESTANCIAS"] / egresos,
-        0.0,
-    )
-    resultado["tasa_fallecidos"] = np.where(
-        egresos > 0,
-        resultado["NRO_TOTAL_FALLECIDOS"] / egresos,
-        0.0,
-    )
-    resultado["ratio_camas_disponibles"] = np.where(
-        capacidad_mensual > 0,
-        camas_disponibles / capacidad_mensual,
-        0.0,
-    )
-    resultado["ocupacion_estimada"] = np.where(
-        capacidad_mensual > 0,
-        resultado["NRO_TOTAL_PACIENTES_CAMAS"] / capacidad_mensual,
-        0.0,
-    )
-    resultado["presion_ingresos_camas"] = np.where(
-        camas > 0,
-        resultado["NRO_TOTAL_HOSPIT_ING"] / camas,
-        resultado["NRO_TOTAL_HOSPIT_ING"],
-    )
-    resultado["rotacion_camas"] = np.where(
-        camas > 0,
-        egresos / camas,
-        0.0,
-    )
-    resultado["diferencia_ingresos_egresos"] = (
-        resultado["NRO_TOTAL_HOSPIT_ING"] - egresos
-    )
-
-    return resultado
+    resultado = df.rename(columns=RENOMBRE_COLUMNAS)
+    return agregar_indicadores_dataframe(resultado)
 
 
 def mostrar_validaciones_indicadores(df: pd.DataFrame) -> None:
@@ -309,7 +286,6 @@ def preparar_dataset() -> pd.DataFrame:
     print("Calculando indicadores y variable objetivo...")
     df = crear_indicadores(df)
     df = crear_variable_objetivo(df)
-    df = df.rename(columns=RENOMBRE_COLUMNAS)
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")

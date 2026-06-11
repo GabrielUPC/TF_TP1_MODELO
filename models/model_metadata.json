@@ -1,0 +1,42 @@
+{
+  "mejor_modelo": "XGBoost",
+  "f1_macro": 0.993230926505419,
+  "fecha_entrenamiento": "2026-06-11T00:00:01.092619+00:00",
+  "numero_filas_dataset": 2085,
+  "numero_columnas_predictoras": 26,
+  "clases": {
+    "0": "bajo",
+    "1": "medio",
+    "2": "alto"
+  },
+  "columnas_predictoras": [
+    "anio",
+    "mes",
+    "ubigeo",
+    "departamento",
+    "provincia",
+    "distrito",
+    "sector",
+    "categoria_ipress",
+    "codigo_ipress",
+    "id_hospitalizacion",
+    "servicio_hospitalizacion",
+    "total_ingresos",
+    "total_egresos",
+    "total_estancias",
+    "total_pacientes_camas",
+    "total_camas",
+    "total_camas_disponibles",
+    "total_fallecidos",
+    "dias_mes",
+    "promedio_estancia",
+    "tasa_fallecidos",
+    "ratio_camas_disponibles",
+    "ocupacion_estimada",
+    "presion_ingresos_camas",
+    "rotacion_camas",
+    "diferencia_ingresos_egresos"
+  ],
+  "importancia_variables_generada": true,
+  "advertencia_metodologica": "La variable objetivo se construye mediante reglas aplicadas a los indicadores del mismo mes y esos indicadores también se usan como predictores. Una métrica alta mide principalmente la capacidad de reproducir esas reglas y no demuestra por sí sola capacidad de pronóstico futuro."
+}

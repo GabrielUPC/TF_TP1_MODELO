@@ -10,6 +10,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = PROJECT_ROOT / "models" / "modelo_ipress.joblib"
 CLASES_PATH = PROJECT_ROOT / "models" / "clases_riesgo.json"
+CLASES_ESPERADAS = {"0": "bajo", "1": "medio", "2": "alto"}
 
 
 @lru_cache(maxsize=1)
@@ -28,16 +29,16 @@ def cargar_artefactos() -> tuple[Any, dict[str, str]]:
     try:
         modelo = joblib.load(MODEL_PATH)
         clases = json.loads(CLASES_PATH.read_text(encoding="utf-8"))
-    except (
-        EOFError,
-        ImportError,
-        OSError,
-        ValueError,
-        json.JSONDecodeError,
-    ) as error:
+    except Exception as error:
         raise RuntimeError(
             f"No se pudieron cargar los artefactos del modelo: {error}"
         ) from error
+
+    if clases != CLASES_ESPERADAS:
+        raise RuntimeError(
+            "El archivo de clases no contiene el mapeo esperado: "
+            '{"0": "bajo", "1": "medio", "2": "alto"}.'
+        )
 
     return modelo, clases
 

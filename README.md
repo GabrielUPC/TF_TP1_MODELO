@@ -1,17 +1,15 @@
 # Plataforma predictiva de capacidad asistencial en IPRESS
 
-Proyecto académico para clasificar el riesgo de insuficiencia de capacidad
-asistencial en IPRESS públicas de Lima Metropolitana usando información mensual
-agregada por establecimiento y servicio hospitalario.
+Proyecto académico que clasifica el riesgo de insuficiencia de capacidad
+asistencial en IPRESS públicas de Lima Metropolitana:
 
-El modelo analiza disponibilidad y uso de camas. No asigna camas
-automáticamente, no reemplaza decisiones clínicas y no funciona como historia
-clínica electrónica.
+- `bajo` (`0`)
+- `medio` (`1`)
+- `alto` (`2`)
 
-Trabaja únicamente con información mensual agregada por IPRESS, mes y servicio
-hospitalario. El archivo original debe estar disponible en
-`data/raw/ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv` antes de
-preparar los datos.
+Trabaja con información mensual agregada por IPRESS, mes y servicio
+hospitalario. No asigna camas automáticamente, no reemplaza decisiones clínicas
+y no funciona como historia clínica electrónica.
 
 ## Estructura
 
@@ -19,111 +17,115 @@ preparar los datos.
 TF_TP1_Modelo/
 |-- data/
 |   |-- raw/
+|   |   |-- README.md
 |   |   `-- ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv
 |   `-- processed/
 |       `-- dataset_modelo_ipress.csv
 |-- models/
 |   |-- modelo_ipress.joblib
 |   |-- metricas_modelo.csv
-|   `-- clases_riesgo.json
+|   |-- clases_riesgo.json
+|   |-- model_metadata.json
+|   `-- importancia_variables.csv
 |-- src/
+|   |-- indicadores.py
 |   |-- preparar_dataset.py
 |   |-- entrenar_modelo.py
 |   |-- predecir.py
 |   `-- main.py
+|-- tests/
 |-- requirements.txt
 `-- README.md
 ```
 
 ## Instalación
 
-Desde la raíz del proyecto, crear el entorno virtual:
-
 ```powershell
 python -m venv .venv
-```
-
-Activarlo en PowerShell:
-
-```powershell
 .venv\Scripts\Activate.ps1
-```
-
-Instalar las dependencias:
-
-```powershell
 pip install -r requirements.txt
 ```
 
-## Preparación y entrenamiento
+## Dataset
 
-Preparar y consolidar el dataset:
+El CSV original puede no distribuirse con el repositorio. Antes del
+procesamiento debe colocarse en:
+
+```text
+data/raw/ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv
+```
+
+El pipeline no inventa registros. Informa claramente si el archivo no existe,
+está vacío, no contiene filas o carece de columnas obligatorias.
+
+Para preparar el dataset:
 
 ```powershell
 py src/preparar_dataset.py
 ```
 
-El proceso filtra IPRESS públicas de Lima Metropolitana, calcula indicadores
-hospitalarios y genera `data/processed/dataset_modelo_ipress.csv`.
+El proceso limpia, consolida y filtra IPRESS públicas de Lima Metropolitana.
+El resultado queda en `data/processed/dataset_modelo_ipress.csv`.
 
-### Indicadores
+## Indicadores
 
-El dataset procesado contiene:
+Las fórmulas están centralizadas en `src/indicadores.py` y son compartidas por
+el procesamiento y la API:
 
-- `promedio_estancia`: estancias totales / egresos hospitalarios.
-- `tasa_fallecidos`: fallecidos / egresos hospitalarios.
-- `ratio_camas_disponibles`: camas disponibles o habilitadas del mes /
-  capacidad mensual.
+- `dias_mes`: días reales del año y mes.
+- `capacidad_mensual`: camas totales por días del mes.
+- `promedio_estancia`: estancias totales / egresos.
+- `tasa_fallecidos`: fallecidos / egresos.
+- `ratio_camas_disponibles`: camas-día disponibles / capacidad mensual.
 - `ocupacion_estimada`: pacientes-cama / capacidad mensual.
-- `presion_ingresos_camas`: ingresos hospitalarios / camas totales.
-- `rotacion_camas`: egresos hospitalarios / camas totales.
-- `diferencia_ingresos_egresos`: ingresos hospitalarios - egresos
-  hospitalarios.
+- `presion_ingresos_camas`: ingresos / camas totales.
+- `rotacion_camas`: egresos / camas totales.
+- `diferencia_ingresos_egresos`: ingresos - egresos.
 
-La capacidad mensual se calcula como:
+Las divisiones entre cero se controlan de forma explícita.
 
-```text
-capacidad mensual = camas totales * días del mes
-```
-
-Esta normalización considera que `NRO_TOTAL_CAMAS_DISPONIB` representa
-disponibilidad acumulada en camas-día durante el mes. Al preparar el dataset se
-imprimen estadísticas descriptivas de los principales indicadores y una
-advertencia si `ratio_camas_disponibles` supera `1.5`.
-
-Entrenar y comparar los modelos:
+## Entrenamiento
 
 ```powershell
 py src/entrenar_modelo.py
 ```
 
-Se entrenan Regresión Logística, Random Forest y XGBoost. Si XGBoost no está
-instalado o no puede importarse, el proceso continúa con los otros dos modelos.
-El mejor modelo según F1 macro se guarda en `models/modelo_ipress.joblib`.
+Se comparan Regresión Logística, Random Forest y XGBoost, cuando está
+disponible. El mejor modelo se selecciona por F1 macro y genera:
+
+- `models/modelo_ipress.joblib`
+- `models/metricas_modelo.csv`
+- `models/clases_riesgo.json`
+- `models/model_metadata.json`
+- `models/importancia_variables.csv`, si el modelo expone importancias
 
 ## API
-
-Ejecutar la API:
 
 ```powershell
 uvicorn src.main:app --reload
 ```
 
-Direcciones:
-
 - API: <http://127.0.0.1:8000>
-- Documentación interactiva: <http://127.0.0.1:8000/docs>
-- Estado: <http://127.0.0.1:8000/health>
+- Documentación: <http://127.0.0.1:8000/docs>
+- Salud: <http://127.0.0.1:8000/health>
 
-El endpoint `POST /predict` recibe una observación mensual agregada y devuelve
-una clasificación:
+`POST /predict` recibe únicamente datos base hospitalarios. La API calcula los
+indicadores internamente antes de invocar el modelo, por lo que el consumidor no
+debe duplicar esas fórmulas.
 
-- `bajo` (`0`)
-- `medio` (`1`)
-- `alto` (`2`)
+El resultado incluye la clase, probabilidades y este mensaje:
 
-La probabilidad y la clasificación son resultados referenciales. No reemplazan
-decisiones clínicas ni asignan camas automáticamente.
+> El resultado es referencial y no reemplaza decisiones clínicas ni asigna
+> camas automáticamente.
+
+## Pruebas
+
+```powershell
+pytest
+```
+
+Las pruebas cubren indicadores, validación del CSV, salud de la API, cálculo
+interno de indicadores y ausencia del modelo.
 
 ## Limitación metodológica
 
@@ -134,7 +136,4 @@ reproducir esas reglas; no demuestra por sí sola capacidad de pronóstico futur
 Una validación prospectiva requeriría datos de varios periodos y una etiqueta de
 riesgo observada en meses posteriores.
 
-## Alcance de los datos
-
-El flujo usa datos estructurados y agregados por IPRESS, mes y servicio
-hospitalario. No requiere ni procesa datos privados identificables de pacientes.
+El proyecto procesa datos agregados y no requiere datos personales de pacientes.
