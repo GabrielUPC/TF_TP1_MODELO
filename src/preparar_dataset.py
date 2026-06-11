@@ -11,12 +11,7 @@ else:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RAW_DATA_PATH = (
-    PROJECT_ROOT
-    / "data"
-    / "raw"
-    / "ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv"
-)
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 OUTPUT_PATH = PROCESSED_DIR / "dataset_modelo_ipress.csv"
 
@@ -53,6 +48,7 @@ COLUMNAS_AGRUPACION = [
     "RAZON_SOC",
     "ID_HOSPITALIZACION",
     "HOSPITALIZACION",
+    "ARCHIVO_ORIGEN",
 ]
 
 COLUMNAS_TEXTO = [
@@ -67,6 +63,10 @@ COLUMNAS_TEXTO = [
     "ID_HOSPITALIZACION",
     "HOSPITALIZACION",
 ]
+
+ALIAS_COLUMNAS = {
+    "DIAS_CAMA_DISPONIBLE": "NRO_TOTAL_CAMAS_DISPONIB",
+}
 
 RENOMBRE_COLUMNAS = {
     "ANHO": "anio",
@@ -88,39 +88,102 @@ RENOMBRE_COLUMNAS = {
     "NRO_TOTAL_CAMAS": "total_camas",
     "NRO_TOTAL_CAMAS_DISPONIB": "total_camas_disponibles",
     "NRO_TOTAL_FALLECIDOS": "total_fallecidos",
+    "ARCHIVO_ORIGEN": "archivo_origen",
 }
 
+COLUMNAS_SALIDA = [
+    "anio",
+    "mes",
+    "ubigeo",
+    "departamento",
+    "provincia",
+    "distrito",
+    "sector",
+    "categoria_ipress",
+    "codigo_ipress",
+    "nombre_ipress",
+    "id_hospitalizacion",
+    "servicio_hospitalizacion",
+    "total_ingresos",
+    "total_egresos",
+    "total_estancias",
+    "total_pacientes_camas",
+    "total_camas",
+    "total_camas_disponibles",
+    "total_fallecidos",
+    "archivo_origen",
+    "dias_mes",
+    "promedio_estancia",
+    "tasa_fallecidos",
+    "ratio_camas_disponibles",
+    "ocupacion_estimada",
+    "presion_ingresos_camas",
+    "rotacion_camas",
+    "diferencia_ingresos_egresos",
+    "nivel_riesgo",
+    "nivel_riesgo_codificado",
+]
+
 MENSAJE_CSV_VACIO = (
-    "El archivo CSV original está vacío. Coloque el dataset real en "
-    "data/raw/ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv antes "
-    "de ejecutar el procesamiento."
+    "El archivo CSV original está vacío. Coloque datasets reales en data/raw/ "
+    "antes de ejecutar el procesamiento."
 )
+
+
+class CSVVacioError(ValueError):
+    """Indica que un CSV existe pero no aporta filas utilizables."""
+
+
+def _detectar_formato(path: Path) -> tuple[str, str]:
+    muestra = path.read_bytes()[:8192]
+    for encoding in ("utf-8-sig", "latin1"):
+        try:
+            texto = muestra.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ValueError(f"No se pudo determinar la codificación de {path.name}.")
+
+    primera_linea = next(
+        (linea for linea in texto.splitlines() if linea.strip()),
+        "",
+    )
+    if not primera_linea:
+        raise CSVVacioError(MENSAJE_CSV_VACIO)
+
+    separador = (
+        ";" if primera_linea.count(";") > primera_linea.count(",") else ","
+    )
+    return encoding, separador
 
 
 def leer_csv(path: Path) -> pd.DataFrame:
     if not path.is_file():
-        raise FileNotFoundError(
-            f"No se encontró el archivo CSV original: {path}. "
-            "Coloque el dataset real antes de ejecutar el procesamiento."
-        )
+        raise FileNotFoundError(f"No se encontró el archivo CSV: {path}")
     if path.stat().st_size == 0:
-        raise ValueError(MENSAJE_CSV_VACIO)
+        raise CSVVacioError(MENSAJE_CSV_VACIO)
 
-    for encoding in ("utf-8-sig", "latin1"):
-        try:
-            df = pd.read_csv(path, encoding=encoding, dtype=str)
-        except UnicodeDecodeError:
-            continue
-        except pd.errors.EmptyDataError as error:
-            raise ValueError(MENSAJE_CSV_VACIO) from error
+    encoding, separador = _detectar_formato(path)
+    try:
+        df = pd.read_csv(
+            path,
+            encoding=encoding,
+            sep=separador,
+            dtype=str,
+        )
+    except pd.errors.EmptyDataError as error:
+        raise CSVVacioError(MENSAJE_CSV_VACIO) from error
+    except pd.errors.ParserError as error:
+        raise ValueError(
+            f"No se pudo interpretar el archivo {path.name}: {error}"
+        ) from error
 
-        if df.columns.empty:
-            raise ValueError("El archivo CSV original no contiene columnas.")
-        if df.empty:
-            raise ValueError(MENSAJE_CSV_VACIO)
-        return df
-
-    raise ValueError(f"No se pudo determinar la codificación del archivo: {path}")
+    if df.columns.empty:
+        raise CSVVacioError(f"El archivo {path.name} no contiene columnas.")
+    if df.empty:
+        raise CSVVacioError(f"El archivo {path.name} no contiene filas.")
+    return df
 
 
 def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
@@ -129,17 +192,71 @@ def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
         re.sub(r"\s+", "_", str(columna).strip().upper())
         for columna in resultado.columns
     ]
-    return resultado
+
+    renombres = {
+        alias: canonica
+        for alias, canonica in ALIAS_COLUMNAS.items()
+        if alias in resultado.columns and canonica not in resultado.columns
+    }
+    return resultado.rename(columns=renombres)
 
 
-def validar_columnas(df: pd.DataFrame) -> None:
-    requeridas = set(COLUMNAS_AGRUPACION + COLUMNAS_NUMERICAS)
+def validar_columnas(df: pd.DataFrame, archivo: str | None = None) -> None:
+    requeridas = set(COLUMNAS_AGRUPACION[:-1] + COLUMNAS_NUMERICAS)
     faltantes = sorted(requeridas.difference(df.columns))
     if faltantes:
+        origen = f" en el archivo {archivo}" if archivo else ""
         raise ValueError(
-            "El archivo fuente no contiene las columnas requeridas: "
-            + ", ".join(faltantes)
+            f"Faltan columnas obligatorias{origen}: " + ", ".join(faltantes)
         )
+
+
+def _es_archivo_temporal(path: Path) -> bool:
+    return path.name.startswith(("~", ".", "$"))
+
+
+def leer_todos_los_csv(raw_dir: Path) -> pd.DataFrame:
+    if not raw_dir.is_dir():
+        raise FileNotFoundError(f"No se encontró el directorio raw: {raw_dir}")
+
+    archivos = sorted(
+        (
+            path
+            for path in raw_dir.glob("*.csv")
+            if path.is_file() and not _es_archivo_temporal(path)
+        ),
+        key=lambda path: path.name.lower(),
+    )
+    if not archivos:
+        raise FileNotFoundError(
+            f"No se encontraron archivos CSV válidos en {raw_dir}."
+        )
+
+    print(f"Leyendo archivos CSV desde {raw_dir}...")
+    datasets: list[pd.DataFrame] = []
+
+    for archivo in archivos:
+        try:
+            df = leer_csv(archivo)
+        except CSVVacioError as error:
+            print(f"* ADVERTENCIA: {archivo.name} se omitió: {error}")
+            continue
+
+        df = normalizar_columnas(df)
+        validar_columnas(df, archivo.name)
+        df["ARCHIVO_ORIGEN"] = archivo.name
+        datasets.append(df)
+        print(f"* {archivo.name}: {len(df)} filas")
+
+    if not datasets:
+        raise ValueError(
+            "No se encontró ningún CSV con filas y columnas válidas en "
+            f"{raw_dir}."
+        )
+
+    combinado = pd.concat(datasets, ignore_index=True, sort=False)
+    print(f"Total combinado: {len(combinado)} filas")
+    return combinado
 
 
 def limpiar_texto(serie: pd.Series) -> pd.Series:
@@ -192,13 +309,11 @@ def filtrar_ipress_publicas_lima(df: pd.DataFrame) -> pd.DataFrame:
         & df["SECTOR"].isin(SECTORES_PUBLICOS)
     )
     resultado = df.loc[mascara].copy()
-
     if resultado.empty:
         raise ValueError(
             "No quedaron registros de IPRESS públicas de Lima Metropolitana "
             "después de aplicar los filtros."
         )
-
     return resultado
 
 
@@ -223,7 +338,6 @@ def mostrar_validaciones_indicadores(df: pd.DataFrame) -> None:
         "ocupacion_estimada",
         "presion_ingresos_camas",
     ]
-
     print("\nEstadísticos descriptivos de los indicadores:")
     print(df[indicadores].describe().transpose())
 
@@ -232,9 +346,8 @@ def mostrar_validaciones_indicadores(df: pd.DataFrame) -> None:
         print(
             "\nADVERTENCIA: se encontraron "
             f"{int(ratios_atipicos.sum())} registros con "
-            "ratio_camas_disponibles mayor a 1.5. Revise si "
-            "NRO_TOTAL_CAMAS_DISPONIB representa camas-día disponibles "
-            "de manera consistente."
+            "ratio_camas_disponibles mayor a 1.5. Revise si la disponibilidad "
+            "de camas-día es consistente."
         )
 
 
@@ -269,40 +382,42 @@ def crear_variable_objetivo(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def preparar_dataset() -> pd.DataFrame:
-    print("Leyendo dataset original...")
-    df = leer_csv(RAW_DATA_PATH)
+    df = leer_todos_los_csv(RAW_DATA_DIR)
+    filas_combinadas = len(df)
 
-    print("Normalizando y validando columnas...")
-    df = normalizar_columnas(df)
-    validar_columnas(df)
-
-    print("Limpiando y filtrando registros...")
+    print("\nLimpiando registros...")
     df = limpiar_registros(df)
-    df = filtrar_ipress_publicas_lima(df)
+    filas_limpias = len(df)
 
-    print("Consolidando datos mensuales por IPRESS y servicio...")
+    print("Filtrando IPRESS públicas de Lima Metropolitana...")
+    df = filtrar_ipress_publicas_lima(df)
+    filas_filtradas = len(df)
+
+    print("Consolidando datos mensuales por IPRESS, servicio y origen...")
     df = consolidar_dataset(df)
 
     print("Calculando indicadores y variable objetivo...")
     df = crear_indicadores(df)
     df = crear_variable_objetivo(df)
+    df = df[COLUMNAS_SALIDA]
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
 
     print("\nDataset preparado correctamente.")
     print(f"Archivo generado: {OUTPUT_PATH}")
-    print(f"Número de filas: {df.shape[0]}")
+    print(f"Filas combinadas: {filas_combinadas}")
+    print(f"Filas después de limpieza: {filas_limpias}")
+    print(f"Filas después del filtro Lima pública: {filas_filtradas}")
+    print(f"Filas finales consolidadas: {df.shape[0]}")
     print(f"Número de columnas: {df.shape[1]}")
-    print(f"Columnas finales: {df.columns.tolist()}")
-    print("\nDistribución de categoria_ipress:")
-    print(df["categoria_ipress"].value_counts(dropna=False))
+    print(f"Años detectados: {sorted(df['anio'].unique().tolist())}")
+    print(f"Archivos incluidos: {df['archivo_origen'].nunique()}")
     mostrar_validaciones_indicadores(df)
     print("\nDistribución de nivel_riesgo:")
     print(df["nivel_riesgo"].value_counts(dropna=False))
     print("\nDistribución de nivel_riesgo_codificado:")
     print(df["nivel_riesgo_codificado"].value_counts(dropna=False).sort_index())
-
     return df
 
 

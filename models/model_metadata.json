@@ -1,25 +1,54 @@
 {
   "mejor_modelo": "XGBoost",
-  "f1_macro": 0.993230926505419,
-  "fecha_entrenamiento": "2026-06-11T00:00:01.092619+00:00",
-  "numero_filas_dataset": 2085,
-  "numero_columnas_predictoras": 26,
+  "modo_entrenamiento_final": "interpretable",
+  "f1_macro_aleatorio": 0.9970511915237995,
+  "f1_macro_temporal": 0.9993725031843524,
+  "anio_prueba_temporal": 2026,
+  "fecha_entrenamiento": "2026-06-11T00:32:35.525380+00:00",
+  "numero_filas_dataset": 49232,
+  "numero_columnas_predictoras": 23,
+  "años_disponibles_en_dataset": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026
+  ],
+  "cantidad_archivos_raw_leidos": 12,
+  "archivos_raw_leidos": [
+    "ConsultaD1_2024_v22.csv",
+    "ConsultaD1_2025_v20.csv",
+    "ConsultaD1_2026_v8.csv",
+    "ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv",
+    "ConsultaD1_Hospitalizaciones_Especialidad_2016_v1.csv",
+    "ConsultaD1_Hospitalizaciones_Especialidad_2017_v1.csv",
+    "ConsultaD1_Hospitalizaciones_Especialidad_2018_v2.csv",
+    "ConsultaD1_Hospitalizaciones_Especialidad_2019_v7.csv",
+    "ConsultaD1_Hospitalizaciones_Especialidad_2020_v7.csv",
+    "ConsultaD1_Hospitalizaciones_Especialidad_2021_v18.csv",
+    "ConsultaD1_Hospitalizaciones_Especialidad_2022_v24.csv",
+    "ConsultaD1_Hospitalizaciones_Especialidad_2023_v24.csv"
+  ],
   "clases": {
     "0": "bajo",
     "1": "medio",
     "2": "alto"
   },
-  "columnas_predictoras": [
+  "columnas_predictoras_usadas": [
     "anio",
     "mes",
-    "ubigeo",
     "departamento",
     "provincia",
     "distrito",
     "sector",
     "categoria_ipress",
-    "codigo_ipress",
-    "id_hospitalizacion",
     "servicio_hospitalizacion",
     "total_ingresos",
     "total_egresos",
@@ -37,6 +66,15 @@
     "rotacion_camas",
     "diferencia_ingresos_egresos"
   ],
-  "importancia_variables_generada": true,
-  "advertencia_metodologica": "La variable objetivo se construye mediante reglas aplicadas a los indicadores del mismo mes y esos indicadores también se usan como predictores. Una métrica alta mide principalmente la capacidad de reproducir esas reglas y no demuestra por sí sola capacidad de pronóstico futuro."
+  "columnas_excluidas": [
+    "nivel_riesgo",
+    "nivel_riesgo_codificado",
+    "nombre_ipress",
+    "archivo_origen",
+    "codigo_ipress",
+    "ubigeo",
+    "id_hospitalizacion"
+  ],
+  "criterio_seleccion_modo": "El modo interpretable cumple el F1 mínimo y no pierde más de 0.10 frente al modo completo.",
+  "advertencia_metodologica": "La variable objetivo se construye mediante reglas aplicadas a los indicadores del mismo mes y esos indicadores también se usan como predictores. Por ello, métricas muy altas miden principalmente la capacidad del modelo para reproducir esas reglas; no demuestran por sí solas capacidad de pronóstico futuro. Para validar capacidad predictiva real se requiere evaluación temporal y, de ser posible, etiquetas observadas en periodos posteriores."
 }

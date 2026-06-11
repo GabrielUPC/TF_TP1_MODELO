@@ -11,33 +11,6 @@ Trabaja con información mensual agregada por IPRESS, mes y servicio
 hospitalario. No asigna camas automáticamente, no reemplaza decisiones clínicas
 y no funciona como historia clínica electrónica.
 
-## Estructura
-
-```text
-TF_TP1_Modelo/
-|-- data/
-|   |-- raw/
-|   |   |-- README.md
-|   |   `-- ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv
-|   `-- processed/
-|       `-- dataset_modelo_ipress.csv
-|-- models/
-|   |-- modelo_ipress.joblib
-|   |-- metricas_modelo.csv
-|   |-- clases_riesgo.json
-|   |-- model_metadata.json
-|   `-- importancia_variables.csv
-|-- src/
-|   |-- indicadores.py
-|   |-- preparar_dataset.py
-|   |-- entrenar_modelo.py
-|   |-- predecir.py
-|   `-- main.py
-|-- tests/
-|-- requirements.txt
-`-- README.md
-```
-
 ## Instalación
 
 ```powershell
@@ -46,26 +19,37 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Dataset
+## Datos multianuales
 
-El CSV original puede no distribuirse con el repositorio. Antes del
-procesamiento debe colocarse en:
+El proyecto lee todos los archivos `*.csv` disponibles en `data/raw/`, ordenados
+por nombre. Ejemplos:
 
 ```text
-data/raw/ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv
+ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv
+ConsultaD1_Hospitalizaciones_Especialidad_2016_v1.csv
+ConsultaD1_Hospitalizaciones_Especialidad_2017_v1.csv
 ```
 
-El pipeline no inventa registros. Informa claramente si el archivo no existe,
-está vacío, no contiene filas o carece de columnas obligatorias.
+Se admiten CSV delimitados por coma o punto y coma. La columna histórica
+`DIAS_CAMA_DISPONIBLE` se normaliza como `NRO_TOTAL_CAMAS_DISPONIB`. Cada
+archivo debe contener las demás columnas obligatorias; si falta alguna, el
+proceso informa el archivo y las columnas faltantes.
 
-Para preparar el dataset:
+Los archivos vacíos se omiten con una advertencia. El pipeline no inventa
+registros y falla si no existe ningún CSV válido.
 
 ```powershell
 py src/preparar_dataset.py
 ```
 
-El proceso limpia, consolida y filtra IPRESS públicas de Lima Metropolitana.
-El resultado queda en `data/processed/dataset_modelo_ipress.csv`.
+El procesamiento:
+
+1. Concatena todos los CSV y agrega `archivo_origen`.
+2. Limpia y valida los registros.
+3. Filtra IPRESS públicas de Lima Metropolitana.
+4. Consolida por año, mes, IPRESS, servicio y archivo de origen.
+5. Calcula indicadores y la variable objetivo.
+6. Genera `data/processed/dataset_modelo_ipress.csv`.
 
 ## Indicadores
 
@@ -74,7 +58,7 @@ el procesamiento y la API:
 
 - `dias_mes`: días reales del año y mes.
 - `capacidad_mensual`: camas totales por días del mes.
-- `promedio_estancia`: estancias totales / egresos.
+- `promedio_estancia`: estancias / egresos.
 - `tasa_fallecidos`: fallecidos / egresos.
 - `ratio_camas_disponibles`: camas-día disponibles / capacidad mensual.
 - `ocupacion_estimada`: pacientes-cama / capacidad mensual.
@@ -82,22 +66,41 @@ el procesamiento y la API:
 - `rotacion_camas`: egresos / camas totales.
 - `diferencia_ingresos_egresos`: ingresos - egresos.
 
-Las divisiones entre cero se controlan de forma explícita.
-
-## Entrenamiento
+## Entrenamiento y evaluación
 
 ```powershell
 py src/entrenar_modelo.py
 ```
 
-Se comparan Regresión Logística, Random Forest y XGBoost, cuando está
-disponible. El mejor modelo se selecciona por F1 macro y genera:
+Se comparan Regresión Logística, Random Forest y XGBoost en dos modos:
+
+- `completo`: excluye objetivo, nombre de IPRESS y archivo de origen.
+- `interpretable`: también excluye `codigo_ipress`, `ubigeo` e
+  `id_hospitalizacion` para reducir memorización.
+
+Cada modo usa:
+
+- Evaluación aleatoria estratificada con 20% de prueba.
+- Evaluación temporal con el último año como prueba y los anteriores como
+  entrenamiento, cuando hay más de un año.
+
+El modo interpretable se selecciona para producción si logra F1 macro de al
+menos `0.70` y no pierde más de `0.10` frente al modo completo. En caso
+contrario se conserva el completo y se registra una advertencia.
+
+Artefactos:
 
 - `models/modelo_ipress.joblib`
 - `models/metricas_modelo.csv`
+- `models/metricas_modelo_aleatorio.csv`
+- `models/metricas_modelo_temporal.csv`
+- `models/metricas_modelo_completo.csv`
+- `models/metricas_modelo_interpretable.csv`
 - `models/clases_riesgo.json`
 - `models/model_metadata.json`
-- `models/importancia_variables.csv`, si el modelo expone importancias
+- `models/importancia_variables.csv`
+- `models/importancia_variables_completo.csv`
+- `models/importancia_variables_interpretable.csv`
 
 ## API
 
@@ -109,14 +112,13 @@ uvicorn src.main:app --reload
 - Documentación: <http://127.0.0.1:8000/docs>
 - Salud: <http://127.0.0.1:8000/health>
 
-`POST /predict` recibe únicamente datos base hospitalarios. La API calcula los
-indicadores internamente antes de invocar el modelo, por lo que el consumidor no
-debe duplicar esas fórmulas.
+`POST /predict` recibe los datos hospitalarios base y calcula los indicadores
+internamente. La inferencia utiliza únicamente las columnas esperadas por el
+modelo guardado, por lo que funciona tanto con el modo completo como con el
+interpretable.
 
-El resultado incluye la clase, probabilidades y este mensaje:
-
-> El resultado es referencial y no reemplaza decisiones clínicas ni asigna
-> camas automáticamente.
+El resultado es referencial y no reemplaza decisiones clínicas ni asigna camas
+automáticamente.
 
 ## Pruebas
 
@@ -124,16 +126,13 @@ El resultado incluye la clase, probabilidades y este mensaje:
 pytest
 ```
 
-Las pruebas cubren indicadores, validación del CSV, salud de la API, cálculo
-interno de indicadores y ausencia del modelo.
-
 ## Limitación metodológica
 
 La variable objetivo se construye mediante reglas aplicadas a los indicadores
-del mismo mes y esos indicadores también se usan como predictores. Por ello, una
-métrica de prueba muy alta mide principalmente la capacidad del modelo para
-reproducir esas reglas; no demuestra por sí sola capacidad de pronóstico futuro.
-Una validación prospectiva requeriría datos de varios periodos y una etiqueta de
-riesgo observada en meses posteriores.
+del mismo mes y esos indicadores también se usan como predictores. Por ello,
+métricas muy altas miden principalmente la capacidad del modelo para reproducir
+esas reglas; no demuestran por sí solas capacidad de pronóstico futuro. Para
+validar capacidad predictiva real se requiere evaluación temporal y, de ser
+posible, etiquetas observadas en periodos posteriores.
 
 El proyecto procesa datos agregados y no requiere datos personales de pacientes.
