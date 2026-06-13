@@ -3,6 +3,5 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 models/*.pkl
-models/*.joblib
 .pytest_cache/
 .env

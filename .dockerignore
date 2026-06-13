@@ -1,0 +1,14 @@
+.git/
+.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+.env
+data/raw/*.csv
+data/processed/
+tests/
+*.log
+~*
+.*
+!.dockerignore

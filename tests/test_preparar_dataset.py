@@ -1,12 +1,13 @@
-import pytest
 import pandas as pd
+import pytest
 
-from src.entrenar_modelo import crear_particion_temporal
 from src.preparar_dataset import (
     MENSAJE_CSV_VACIO,
+    crear_objetivo_futuro,
     leer_csv,
     leer_todos_los_csv,
 )
+from src.variables_temporales import agregar_variables_temporales
 
 
 COLUMNAS_BASE = {
@@ -56,11 +57,7 @@ def test_leer_todos_los_csv_combina_archivos_y_agrega_origen(tmp_path) -> None:
     segundo = segundo.rename(
         columns={"NRO_TOTAL_CAMAS_DISPONIB": "DIAS_CAMA_DISPONIBLE"}
     )
-    segundo.to_csv(
-        tmp_path / "datos_2021.csv",
-        index=False,
-        sep=";",
-    )
+    segundo.to_csv(tmp_path / "datos_2021.csv", index=False, sep=";")
 
     combinado = leer_todos_los_csv(tmp_path)
 
@@ -73,10 +70,7 @@ def test_leer_todos_los_csv_combina_archivos_y_agrega_origen(tmp_path) -> None:
 
 
 def test_leer_todos_los_csv_ignora_archivos_no_csv(tmp_path) -> None:
-    pd.DataFrame(COLUMNAS_BASE).to_csv(
-        tmp_path / "datos.csv",
-        index=False,
-    )
+    pd.DataFrame(COLUMNAS_BASE).to_csv(tmp_path / "datos.csv", index=False)
     (tmp_path / "notas.txt").write_text("no debe leerse", encoding="utf-8")
 
     combinado = leer_todos_los_csv(tmp_path)
@@ -84,18 +78,55 @@ def test_leer_todos_los_csv_ignora_archivos_no_csv(tmp_path) -> None:
     assert combinado["ARCHIVO_ORIGEN"].tolist() == ["datos.csv"]
 
 
-def test_evaluacion_temporal_se_omite_con_un_anio(capsys) -> None:
-    df = pd.DataFrame(
+def _serie_riesgo(meses: list[int]) -> pd.DataFrame:
+    riesgos = ["bajo", "medio", "alto"][: len(meses)]
+    codigos = [0, 1, 2][: len(meses)]
+    return pd.DataFrame(
         {
-            "anio": [2020, 2020, 2020],
-            "variable": [1, 2, 3],
-            "nivel_riesgo_codificado": [0, 1, 2],
+            "codigo_ipress": ["A"] * len(meses),
+            "servicio_hospitalizacion": ["S"] * len(meses),
+            "anio": [2024] * len(meses),
+            "mes": meses,
+            "nivel_riesgo_actual": riesgos,
+            "nivel_riesgo_actual_codificado": codigos,
         }
     )
-    X = df[["anio", "variable"]]
-    y = df["nivel_riesgo_codificado"]
 
-    resultado = crear_particion_temporal(df, X, y)
 
-    assert resultado is None
-    assert "solo hay un año disponible" in capsys.readouterr().out
+def test_crear_objetivo_futuro_desplaza_riesgo_un_mes() -> None:
+    resultado = crear_objetivo_futuro(_serie_riesgo([1, 2, 3]))
+
+    assert resultado["periodo_actual"].tolist() == ["2024-01", "2024-02"]
+    assert resultado["periodo_predicho"].tolist() == ["2024-02", "2024-03"]
+    assert resultado["nivel_riesgo_siguiente_mes"].tolist() == [
+        "medio",
+        "alto",
+    ]
+
+
+def test_crear_objetivo_futuro_elimina_ultimo_mes_y_no_salta_huecos() -> None:
+    resultado = crear_objetivo_futuro(_serie_riesgo([1, 3]))
+
+    assert resultado.empty
+
+
+def test_variables_moviles_no_usan_informacion_futura() -> None:
+    df = pd.DataFrame(
+        {
+            "codigo_ipress": ["A", "A", "A"],
+            "servicio_hospitalizacion": ["S", "S", "S"],
+            "anio": [2024, 2024, 2024],
+            "mes": [1, 2, 3],
+            "ocupacion_estimada": [0.4, 0.5, 9.0],
+            "presion_ingresos_camas": [0.2, 0.3, 9.0],
+            "total_ingresos": [10, 20, 1000],
+            "total_egresos": [8, 18, 900],
+            "total_estancias": [40, 90, 5000],
+        }
+    )
+
+    resultado = agregar_variables_temporales(df)
+
+    assert resultado.loc[0, "promedio_movil_3m_ingresos"] == pytest.approx(10)
+    assert resultado.loc[1, "promedio_movil_3m_ingresos"] == pytest.approx(15)
+    assert resultado.loc[1, "tendencia_ingresos_1m"] == pytest.approx(10)

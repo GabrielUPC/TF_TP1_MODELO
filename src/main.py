@@ -1,26 +1,36 @@
+from typing import Any
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.indicadores import agregar_indicadores_registro
-from src.predecir import predecir_riesgo
+from src.predecir import obtener_metadata_publica, predecir_riesgo
+from src.variables_temporales import (
+    periodo_siguiente,
+    preparar_registro_con_historial,
+)
 
 
 MENSAJE_REFERENCIAL = (
     "El resultado es referencial y no reemplaza decisiones clínicas ni asigna "
     "camas automáticamente."
 )
+ADVERTENCIA_HISTORIAL_INCOMPLETO = (
+    "No se recibió historial completo de los dos meses previos; algunas "
+    "variables temporales fueron estimadas con información limitada."
+)
 
 app = FastAPI(
-    title="API del modelo predictivo IPRESS",
+    title="API predictiva de capacidad asistencial IPRESS",
     description=(
-        "Clasifica el riesgo de insuficiencia de capacidad asistencial a partir "
-        "de información hospitalaria mensual agregada."
+        "Predice el riesgo de insuficiencia de capacidad asistencial del "
+        "siguiente mes usando información hospitalaria mensual agregada."
     ),
-    version="1.0.0",
+    version="2.0.0",
 )
 
 
-class DatosPrediccion(BaseModel):
+class DatosHospitalarios(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     anio: int = Field(ge=1900, le=2100)
@@ -43,20 +53,41 @@ class DatosPrediccion(BaseModel):
     total_fallecidos: float = Field(ge=0)
 
 
+class SolicitudPrediccion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    registro_actual: DatosHospitalarios
+    historial_ultimos_meses: list[DatosHospitalarios] = Field(
+        default_factory=list,
+        max_length=12,
+    )
+
+
+class VariablePrincipal(BaseModel):
+    variable: str
+    valor: Any
+
+
 class ResultadoPrediccion(BaseModel):
-    nivel_riesgo: str
+    periodo_actual: str
+    periodo_predicho: str
+    horizonte_prediccion: str
+    nivel_riesgo_predicho: str
     nivel_riesgo_codificado: int
     probabilidad: float
     probabilidades_por_clase: dict[str, float]
+    variables_principales: list[VariablePrincipal]
+    advertencia_historial: str | None
     mensaje: str
 
 
 @app.get("/")
 def raiz() -> dict[str, str]:
     return {
-        "mensaje": "API del modelo predictivo IPRESS funcionando",
+        "mensaje": "API predictiva IPRESS funcionando",
         "proyecto": (
-            "Predicción de riesgo de insuficiencia de capacidad asistencial"
+            "Predicción del riesgo de insuficiencia de capacidad asistencial "
+            "del siguiente mes"
         ),
     }
 
@@ -66,12 +97,52 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/predict", response_model=ResultadoPrediccion)
-def predict(datos: DatosPrediccion) -> dict:
+@app.get("/metadata")
+def metadata() -> dict[str, Any]:
     try:
-        registro_completo = agregar_indicadores_registro(datos.model_dump())
-        resultado = predecir_riesgo(registro_completo)
-        resultado["mensaje"] = MENSAJE_REFERENCIAL
+        return obtener_metadata_publica()
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+
+
+@app.post("/predict", response_model=ResultadoPrediccion)
+def predict(solicitud: SolicitudPrediccion) -> dict[str, Any]:
+    try:
+        actual = agregar_indicadores_registro(
+            solicitud.registro_actual.model_dump()
+        )
+        historial = [
+            agregar_indicadores_registro(registro.model_dump())
+            for registro in solicitud.historial_ultimos_meses
+        ]
+        fila_actual, historial_completo = preparar_registro_con_historial(
+            actual,
+            historial,
+        )
+        datos_modelo = fila_actual.iloc[0].to_dict()
+        resultado = predecir_riesgo(datos_modelo)
+        periodo_actual = (
+            f"{solicitud.registro_actual.anio:04d}-"
+            f"{solicitud.registro_actual.mes:02d}"
+        )
+        resultado.update(
+            {
+                "periodo_actual": periodo_actual,
+                "periodo_predicho": periodo_siguiente(
+                    solicitud.registro_actual.anio,
+                    solicitud.registro_actual.mes,
+                ),
+                "horizonte_prediccion": "mes_siguiente",
+                "advertencia_historial": (
+                    None
+                    if historial_completo
+                    else ADVERTENCIA_HISTORIAL_INCOMPLETO
+                ),
+                "mensaje": MENSAJE_REFERENCIAL,
+            }
+        )
         return resultado
     except (TypeError, ValueError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
