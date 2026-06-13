@@ -118,7 +118,7 @@ Ejemplo para marzo de 2026 con dos meses de historial:
     "total_estancias": 350.0,
     "total_pacientes_camas": 2500.0,
     "total_camas": 100.0,
-    "total_camas_disponibles": 90.0,
+    "total_camas_disponibles": 2790.0,
     "total_fallecidos": 0.0
   },
   "historial_ultimos_meses": [
@@ -139,7 +139,7 @@ Ejemplo para marzo de 2026 con dos meses de historial:
       "total_estancias": 330.0,
       "total_pacientes_camas": 2400.0,
       "total_camas": 100.0,
-      "total_camas_disponibles": 92.0,
+      "total_camas_disponibles": 2790.0,
       "total_fallecidos": 0.0
     },
     {
@@ -159,7 +159,7 @@ Ejemplo para marzo de 2026 con dos meses de historial:
       "total_estancias": 340.0,
       "total_pacientes_camas": 2450.0,
       "total_camas": 100.0,
-      "total_camas_disponibles": 91.0,
+      "total_camas_disponibles": 2520.0,
       "total_fallecidos": 0.0
     }
   ]
@@ -222,7 +222,31 @@ Spring Boot actualiza o crea la prediccion asociada al indicador:
 | `total_estancias` | `RegistroHospitalario.estancias` |
 | `total_pacientes_camas` | `RegistroHospitalario.pacientesCama` |
 | `total_camas` | `RegistroHospitalario.camasTotales` |
-| `total_camas_disponibles` | `RegistroHospitalario.camasDisponiblesHabilitadas` |
+| `total_camas_disponibles` | `RegistroHospitalario.camasDisponiblesHabilitadas * dias del mes` |
+
+El modelo fue entrenado con `NRO_TOTAL_CAMAS_DISPONIB`, cuyo significado es
+camas-dia disponibles durante el mes. No espera solamente la cantidad fisica
+de camas disponibles. Por eso el backend transforma cada registro con:
+
+```java
+YearMonth.of(anio, mes).lengthOfMonth()
+```
+
+```text
+total_camas_disponibles =
+    camasDisponiblesHabilitadas * diasDelMes
+```
+
+La conversion se aplica tanto al registro actual como a los meses enviados en
+`historial_ultimos_meses`. Por ejemplo, 90 camas disponibles en marzo equivalen
+a `90 * 31 = 2790` camas-dia disponibles. En el historial del ejemplo, enero
+tambien usa `90 * 31 = 2790` y febrero de 2026 usa
+`90 * 28 = 2520`.
+
+En el Excel, `camas_disponibles_habilitadas` representa la cantidad de camas
+fisicas disponibles o habilitadas. Antes de llamar a FastAPI, Spring Boot la
+convierte a camas-dia disponibles mensuales multiplicando el valor por
+`YearMonth.of(anio, mes).lengthOfMonth()`.
 
 Valores predeterminados importantes para la sustentacion:
 
