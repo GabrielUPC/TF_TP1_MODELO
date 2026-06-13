@@ -80,20 +80,46 @@ npm start
 
 ## Flujo de una prediccion
 
-1. El usuario carga el Excel desde Angular.
-2. Spring Boot valida y guarda los registros hospitalarios.
-3. El backend calcula `IndicadorHospitalario`.
-4. Para cada indicador, `ModeloPredictivoClientService` envia un `POST` a
+1. El usuario carga un CSV o Excel hospitalario desde Angular.
+2. Spring Boot normaliza las columnas y detecta automaticamente
+   `FORMATO_INTERNO` o `DATASET_D1`.
+3. El backend valida, aplica el ETL necesario y guarda los registros
+   hospitalarios.
+4. El backend calcula `IndicadorHospitalario`.
+5. Para cada indicador, `ModeloPredictivoClientService` envia un `POST` a
    `{modelo.ipress.url}/predict`.
-5. El backend busca hasta los dos meses calendario anteriores de la misma
+6. El backend busca hasta los dos meses calendario anteriores de la misma
    IPRESS y el mismo servicio hospitalario.
-6. FastAPI calcula indicadores y variables temporales, y ejecuta XGBoost.
-7. Spring Boot guarda el resultado en `PrediccionRiesgo`.
-8. El dashboard consulta exclusivamente los endpoints de Spring Boot.
+7. FastAPI calcula indicadores y variables temporales, y ejecuta XGBoost.
+8. Spring Boot guarda el resultado en `PrediccionRiesgo`.
+9. El dashboard consulta exclusivamente los endpoints de Spring Boot.
 
 Si FastAPI no responde, devuelve un estado invalido o entrega una respuesta
 incompleta, Spring Boot informa un error `503` o `502`. No genera una prediccion
 local silenciosa.
+
+## Deteccion automatica y ETL
+
+El usuario no selecciona el tipo de archivo. Spring Boot decide por las
+columnas normalizadas:
+
+- `FORMATO_INTERNO`: contiene codigo IPRESS, periodo, servicio y las metricas
+  internas, incluida `camas_disponibles_habilitadas`.
+- `DATASET_D1`: contiene las columnas oficiales D1, como `ANHO`, `CO_IPRESS`,
+  `ID_HOSPITALIZACION`, `NRO_TOTAL_HOSPIT_ING` y
+  `DIAS_CAMA_DISPONIBLE`.
+- `NO_RECONOCIDO`: no cumple las columnas minimas de ninguno de los formatos y
+  no se procesa.
+
+Los CSV D1 se leen con separador `;`, cabeceras entre comillas y fallback de
+codificacion UTF-8, Windows-1252 e ISO-8859-1. `CO_IPRESS` se conserva como
+texto para no perder ceros iniciales. Las filas con `NE_0001`, sin servicio o
+con metricas invalidas se descartan antes de generar predicciones.
+
+La consolidacion usa la unidad IPRESS, anio, mes y servicio hospitalario. Los
+flujos se suman, los duplicados exactos se omiten y las capacidades conservan
+el maximo. Si las capacidades difieren mas de 20%, la respuesta incluye una
+advertencia.
 
 ## Request enviado por Spring Boot
 
@@ -222,7 +248,7 @@ Spring Boot actualiza o crea la prediccion asociada al indicador:
 | `total_estancias` | `RegistroHospitalario.estancias` |
 | `total_pacientes_camas` | `RegistroHospitalario.pacientesCama` |
 | `total_camas` | `RegistroHospitalario.camasTotales` |
-| `total_camas_disponibles` | `RegistroHospitalario.camasDisponiblesHabilitadas * dias del mes` |
+| `total_camas_disponibles` | Formato interno: `camasDisponiblesHabilitadas * dias del mes`. D1: `DIAS_CAMA_DISPONIBLE` sin multiplicar |
 
 El modelo fue entrenado con `NRO_TOTAL_CAMAS_DISPONIB`, cuyo significado es
 camas-dia disponibles durante el mes. No espera solamente la cantidad fisica
@@ -248,12 +274,17 @@ fisicas disponibles o habilitadas. Antes de llamar a FastAPI, Spring Boot la
 convierte a camas-dia disponibles mensuales multiplicando el valor por
 `YearMonth.of(anio, mes).lengthOfMonth()`.
 
+En un dataset D1, `DIAS_CAMA_DISPONIBLE` ya representa camas-dia disponibles
+del mes. El backend lo guarda por separado y lo envia directamente como
+`total_camas_disponibles`; no vuelve a multiplicarlo por los dias del mes.
+
 Valores predeterminados importantes para la sustentacion:
 
-- `sector`: `"MINSA"`, porque la entidad actual no almacena el sector.
-- `id_hospitalizacion`: `servicioHospitalario`, porque no existe un codigo
-  especifico de hospitalizacion en el backend.
-- `total_fallecidos`: `0.0`, porque el Excel y la entidad actual no lo registran.
+- En formato interno, `sector` usa `"MINSA"` y `id_hospitalizacion` usa el
+  servicio hospitalario porque esos campos no existen en la plantilla.
+- En D1, `sector`, `id_hospitalizacion` y `total_fallecidos` se conservan desde
+  el archivo.
+- En formato interno, `total_fallecidos` usa `0.0`.
 
 Los datos geograficos, categoria y codigo RENIPRESS son obligatorios. Si la
 IPRESS no los tiene, el backend detiene la prediccion con un error claro en vez
@@ -280,7 +311,7 @@ Los endpoints del dashboard mantienen sus rutas y respuestas actuales.
 2. Confirmar `GET /health`.
 3. Levantar Spring Boot en `localhost:8080`.
 4. Levantar Angular en `localhost:4200`.
-5. Iniciar sesion y cargar un Excel valido.
+5. Iniciar sesion y cargar un CSV D1 o Excel interno valido.
 6. Verificar que `PrediccionRiesgo.modeloUtilizado` sea
    `XGBoost - FastAPI`.
 7. Abrir el dashboard y comprobar `nivelRiesgo` y `probabilidad`.
