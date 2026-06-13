@@ -53,6 +53,21 @@ def test_health() -> None:
     assert respuesta.json() == {"status": "ok"}
 
 
+def test_cors_permite_origenes_de_desarrollo() -> None:
+    respuesta = client.options(
+        "/predict",
+        headers={
+            "Origin": "http://localhost:4200",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert respuesta.status_code == 200
+    assert respuesta.headers["access-control-allow-origin"] == (
+        "http://localhost:4200"
+    )
+
+
 def test_predict_devuelve_periodo_siguiente_y_calcula_indicadores(
     monkeypatch,
 ) -> None:
