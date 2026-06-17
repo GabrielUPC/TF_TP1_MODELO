@@ -89,6 +89,7 @@ class ResultadoPrediccion(BaseModel):
     nivel_riesgo_predicho: str
     nivel_riesgo_codificado: int
     probabilidad: float
+    riesgo_insuficiencia_capacidad: float
     probabilidades_por_clase: dict[str, float]
     variables_principales: list[VariablePrincipal]
     advertencia_historial: str | None

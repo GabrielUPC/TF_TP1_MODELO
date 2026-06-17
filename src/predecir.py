@@ -114,6 +114,23 @@ def obtener_variables_principales(
             break
     return principales
 
+def calcular_riesgo_insuficiencia_capacidad(
+    nivel: str,
+    confianza: float,
+) -> float:
+    confianza = max(0.0, min(float(confianza), 1.0))
+    nivel_normalizado = nivel.lower()
+
+    if nivel_normalizado == "bajo":
+        return max(0.0, min(0.33, (1.0 - confianza) * 0.33))
+
+    if nivel_normalizado == "medio":
+        return max(0.33, min(0.66, 0.33 + confianza * 0.33))
+
+    if nivel_normalizado == "alto":
+        return max(0.66, min(1.0, 0.66 + confianza * 0.34))
+
+    return 0.0
 
 def predecir_riesgo(datos: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(datos, dict):
@@ -157,6 +174,10 @@ def predecir_riesgo(datos: dict[str, Any]) -> dict[str, Any]:
             "nivel_riesgo_predicho": nivel,
             "nivel_riesgo_codificado": codigo,
             "probabilidad": probabilidad,
+            "riesgo_insuficiencia_capacidad": calcular_riesgo_insuficiencia_capacidad(
+                nivel,
+                probabilidad,
+            ),
             "probabilidades_por_clase": probabilidades_por_clase,
             "variables_principales": obtener_variables_principales(datos),
         }
