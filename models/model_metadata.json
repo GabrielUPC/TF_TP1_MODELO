@@ -3,7 +3,7 @@
   "horizonte_prediccion": "mes_siguiente",
   "variable_objetivo": "nivel_riesgo_siguiente_mes_codificado",
   "mejor_modelo": "XGBoost",
-  "fecha_entrenamiento": "2026-06-13T15:28:25.465898+00:00",
+  "fecha_entrenamiento": "2026-06-22T02:03:52.408477+00:00",
   "anios_disponibles_en_dataset": [
     2015,
     2016,
