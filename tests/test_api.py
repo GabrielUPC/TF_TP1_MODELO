@@ -46,11 +46,11 @@ def prediccion_falsa(datos: dict) -> dict:
         ],
         "color_semaforo": "amarillo",
         "interpretacion_riesgo": (
-            "Existen señales de presión hospitalaria que requieren seguimiento."
+            "Existen señales de presión hospitalaria que requieren revisión."
         ),
         "recomendacion_riesgo": (
-            "Revisar indicadores, validar tendencia de ingresos y preparar "
-            "acciones preventivas. El resultado es referencial. No asigna "
+            "Revisar indicadores, validar tendencia de ingresos y coordinar "
+            "revisión hospitalaria. El resultado es referencial. No asigna "
             "camas automáticamente y no reemplaza decisiones clínicas."
         ),
         "factores_explicativos": [
@@ -79,10 +79,6 @@ def prediccion_falsa(datos: dict) -> dict:
         ),
         "recomendaciones_operativas": [
             "Revisar si los egresos programados compensan los ingresos esperados."
-        ],
-        "acciones_prioritarias": [
-            "Revisar servicio prioritario.",
-            "Comunicar alerta preventiva a gestión hospitalaria.",
         ],
         "interpretacion_modelo": (
             "El modelo XGBoost clasifica el riesgo del siguiente mes."

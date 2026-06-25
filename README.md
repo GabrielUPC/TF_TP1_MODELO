@@ -71,7 +71,7 @@ características del servicio consideradas por el modelo.
 ## Soporte operativo a la decisión
 
 Además de predecir riesgo `bajo`, `medio` o `alto` del siguiente mes, `/predict`
-devuelve soporte operativo para que el usuario priorice acciones preventivas.
+devuelve soporte operativo para que el usuario comprenda el resultado.
 Este soporte se genera con reglas transparentes sobre indicadores mensuales de
 demanda y capacidad, sin cambiar el modelo XGBoost ni el horizonte predictivo.
 
@@ -87,14 +87,14 @@ La respuesta incluye:
   clasificado como brecha controlada, en observación o crítica.
 - `diagnostico_operativo`: lectura del riesgo del siguiente mes en lenguaje de
   gestión hospitalaria.
-- `recomendaciones_operativas` y `acciones_prioritarias`: medidas sugeridas
-  para seguimiento, coordinación y revisión de datos/capacidad registrada.
+- `recomendaciones_operativas`: recomendaciones generales de apoyo para revisar
+  indicadores de demanda y capacidad.
 - `interpretacion_modelo`, `confianza_prediccion` y probabilidades explícitas
   por clase.
 
 La brecha operativa no representa una falta exacta de camas en tiempo real. Es
-una señal preventiva que ayuda a priorizar gestión del servicio antes del
-siguiente mes. El sistema no crea camas, no asigna camas, no decide altas y no
+una señal preventiva para interpretar la presión entre demanda y capacidad
+registrada. El sistema no crea camas, no asigna camas, no decide altas y no
 reemplaza decisiones clínicas.
 
 ## Flujo predictivo

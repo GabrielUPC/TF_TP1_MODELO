@@ -102,7 +102,6 @@ class ResultadoPrediccion(BaseModel):
     nivel_brecha_operativa: str
     diagnostico_operativo: str
     recomendaciones_operativas: list[str]
-    acciones_prioritarias: list[str]
     interpretacion_modelo: str
     confianza_prediccion: float
     probabilidad_riesgo_bajo: float

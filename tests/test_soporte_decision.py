@@ -42,5 +42,4 @@ def test_soporte_decision_incluye_recomendaciones_accionables() -> None:
 
     assert soporte["causa_principal_riesgo"] == "Demanda supera egresos"
     assert soporte["recomendaciones_operativas"]
-    assert soporte["acciones_prioritarias"]
     assert soporte["confianza_prediccion"] == 0.72

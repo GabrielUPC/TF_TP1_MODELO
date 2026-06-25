@@ -99,9 +99,9 @@ def interpretar_semaforo(nivel_riesgo: str) -> dict[str, str]:
                 "el siguiente mes."
             ),
             "recomendacion_riesgo": (
-                "Priorizar revisión de camas habilitadas, validar datos "
-                "cargados, analizar ocupación estimada y coordinar medidas "
-                "preventivas con el área responsable. "
+                "Se recomienda revisar camas habilitadas, validar registros "
+                "procesados, analizar ocupación estimada y coordinar la "
+                "revisión hospitalaria con el área responsable. "
                 f"{MENSAJE_REFERENCIAL}"
             ),
         }
@@ -111,11 +111,11 @@ def interpretar_semaforo(nivel_riesgo: str) -> dict[str, str]:
             "color_semaforo": "amarillo",
             "interpretacion_riesgo": (
                 "Existen señales de presión hospitalaria que requieren "
-                "seguimiento."
+                "revisión."
             ),
             "recomendacion_riesgo": (
                 "Revisar indicadores, validar tendencia de ingresos y "
-                "preparar acciones preventivas. "
+                "coordinar revisión hospitalaria. "
                 f"{MENSAJE_REFERENCIAL}"
             ),
         }
@@ -195,7 +195,7 @@ def factores_explicativos_riesgo(
             )
         elif riesgo == "medio":
             factores.append(
-                "La presión ingresos/camas requiere seguimiento preventivo."
+                "La presión ingresos/camas requiere revisión hospitalaria."
             )
 
     factores.append(

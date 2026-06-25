@@ -105,61 +105,35 @@ def diagnostico_operativo(nivel_riesgo: str, causa: str) -> str:
 
 
 def recomendaciones_operativas(causa: str) -> list[str]:
-    recomendaciones = {
-        "Ocupación crítica": [
-            "Activar seguimiento operativo del servicio.",
-            "Revisar disponibilidad registrada y posibles camas no operativas.",
-            "Verificar que las camas liberadas sean reportadas oportunamente.",
-            "Comunicar alerta a gestión hospitalaria y servicios involucrados.",
-        ],
-        "Demanda supera egresos": [
-            "Revisar si los egresos programados compensan los ingresos esperados.",
-            "Coordinar seguimiento de altas próximas.",
-            "Revisar posibles demoras administrativas en egresos.",
-            "Priorizar monitoreo del servicio.",
-        ],
-        "Estancia prolongada": [
-            "Identificar pacientes con permanencia elevada.",
-            "Revisar posibles demoras en exámenes, interconsultas, trámites o traslados.",
-            "Coordinar seguimiento de pacientes con estancia prolongada.",
-            "Evaluar impacto de la estancia en la rotación de camas.",
-        ],
-        "Capacidad disponible limitada": [
-            "Verificar actualización de camas disponibles o habilitadas.",
-            "Revisar si existen camas bloqueadas, en mantenimiento o no reportadas.",
-            "Comunicar la limitación a gestión hospitalaria.",
-        ],
-        "Alta presión ingresos/camas": [
-            "Revisar tendencia de ingresos del servicio.",
-            "Coordinar seguimiento preventivo con hospitalización y admisión.",
-            "Monitorear presión ingresos/camas durante el periodo siguiente.",
-        ],
-        "Baja rotación de camas": [
-            "Revisar causas de baja rotación operativa.",
-            "Coordinar seguimiento de egresos y estancias prolongadas.",
-            "Monitorear disponibilidad registrada antes del siguiente mes.",
-        ],
-    }
-    return recomendaciones.get(
-        causa,
-        [
-            "Mantener monitoreo mensual del servicio.",
-            "Revisar indicadores de demanda y capacidad antes del siguiente mes.",
-            "Registrar acciones preventivas si el riesgo aumenta.",
-        ],
-    )
-
-
-def acciones_prioritarias(causa: str, nivel_riesgo: str) -> list[str]:
-    acciones = [
-        "Revisar servicio prioritario.",
-        "Revisar causa principal del riesgo.",
+    if causa == "Ocupación crítica":
+        return [
+            "Se recomienda revisar servicios con riesgo medio o alto.",
+            "Puede considerarse verificar la actualización de camas disponibles o habilitadas.",
+            "Conviene observar la ocupación estimada y la presión ingresos/camas.",
+        ]
+    if causa == "Demanda supera egresos":
+        return [
+            "Se recomienda revisar la relación entre ingresos y egresos hospitalarios.",
+            "Puede considerarse observar servicios con mayor diferencia ingresos-egresos.",
+            "El resultado puede apoyar la coordinación hospitalaria correspondiente.",
+        ]
+    if causa == "Estancia prolongada":
+        return [
+            "Conviene observar servicios con estancia promedio prolongada.",
+            "Se recomienda revisar el efecto de la estancia sobre la rotación de camas.",
+            "El resultado puede apoyar la revisión de indicadores de demanda y capacidad.",
+        ]
+    if causa == "Capacidad disponible limitada":
+        return [
+            "Puede considerarse verificar la actualización de camas disponibles o habilitadas.",
+            "Se recomienda revisar la capacidad mensual registrada.",
+            "Conviene observar si la capacidad disponible se mantiene baja en el periodo.",
+        ]
+    return [
+        "Se recomienda revisar servicios con riesgo medio o alto.",
+        "Puede considerarse verificar la actualización de camas disponibles o habilitadas.",
+        "Conviene observar servicios con estancia promedio prolongada.",
     ]
-    if (nivel_riesgo or "").strip().lower() in {"medio", "alto"}:
-        acciones.append("Comunicar alerta preventiva a gestión hospitalaria.")
-    if causa != "Riesgo controlado":
-        acciones.append("Registrar seguimiento de la recomendación operativa.")
-    return acciones
 
 
 def interpretacion_modelo(nivel_riesgo: str, confianza: float) -> str:
@@ -184,7 +158,6 @@ def generar_soporte_decision(
         **brecha,
         "diagnostico_operativo": diagnostico_operativo(nivel_riesgo, causa),
         "recomendaciones_operativas": recomendaciones_operativas(causa),
-        "acciones_prioritarias": acciones_prioritarias(causa, nivel_riesgo),
         "interpretacion_modelo": interpretacion_modelo(nivel_riesgo, confianza),
         "confianza_prediccion": confianza,
     }
