@@ -13,8 +13,8 @@ from src.variables_temporales import (
 
 
 MENSAJE_REFERENCIAL = (
-    "El resultado es referencial y no reemplaza decisiones clínicas ni asigna "
-    "camas automáticamente."
+    "El resultado es referencial. No asigna camas automáticamente y no "
+    "reemplaza decisiones clínicas."
 )
 ADVERTENCIA_HISTORIAL_INCOMPLETO = (
     "No se recibió historial completo de los dos meses previos; algunas "
@@ -92,6 +92,22 @@ class ResultadoPrediccion(BaseModel):
     riesgo_insuficiencia_capacidad: float
     probabilidades_por_clase: dict[str, float]
     variables_principales: list[VariablePrincipal]
+    color_semaforo: str
+    interpretacion_riesgo: str
+    recomendacion_riesgo: str
+    factores_explicativos: list[str]
+    indicadores_calculados: dict[str, float]
+    causa_principal_riesgo: str
+    brecha_operativa: int
+    nivel_brecha_operativa: str
+    diagnostico_operativo: str
+    recomendaciones_operativas: list[str]
+    acciones_prioritarias: list[str]
+    interpretacion_modelo: str
+    confianza_prediccion: float
+    probabilidad_riesgo_bajo: float
+    probabilidad_riesgo_medio: float
+    probabilidad_riesgo_alto: float
     advertencia_historial: str | None
     mensaje: str
 

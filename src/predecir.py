@@ -7,6 +7,12 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from src.interpretacion import (
+    factores_explicativos_riesgo,
+    interpretar_semaforo,
+)
+from src.soporte_decision import generar_soporte_decision
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = PROJECT_ROOT / "models" / "modelo_ipress.joblib"
@@ -170,6 +176,9 @@ def predecir_riesgo(datos: dict[str, Any]) -> dict[str, Any]:
                 probabilidades_por_clase[nombre_clase] = float(valor)
             probabilidad = float(max(probabilidades))
 
+        semaforo = interpretar_semaforo(nivel)
+        soporte = generar_soporte_decision(datos, nivel, probabilidad)
+
         return {
             "nivel_riesgo_predicho": nivel,
             "nivel_riesgo_codificado": codigo,
@@ -180,6 +189,20 @@ def predecir_riesgo(datos: dict[str, Any]) -> dict[str, Any]:
             ),
             "probabilidades_por_clase": probabilidades_por_clase,
             "variables_principales": obtener_variables_principales(datos),
+            "color_semaforo": semaforo["color_semaforo"],
+            "interpretacion_riesgo": semaforo["interpretacion_riesgo"],
+            "recomendacion_riesgo": semaforo["recomendacion_riesgo"],
+            "factores_explicativos": factores_explicativos_riesgo(datos, nivel),
+            "probabilidad_riesgo_bajo": float(
+                probabilidades_por_clase.get("bajo", 0.0)
+            ),
+            "probabilidad_riesgo_medio": float(
+                probabilidades_por_clase.get("medio", 0.0)
+            ),
+            "probabilidad_riesgo_alto": float(
+                probabilidades_por_clase.get("alto", 0.0)
+            ),
+            **soporte,
         }
     except (KeyError, TypeError, ValueError) as error:
         raise ValueError(f"No se pudo realizar la predicción: {error}") from error

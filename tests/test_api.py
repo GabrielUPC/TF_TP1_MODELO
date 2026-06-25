@@ -35,6 +35,7 @@ def prediccion_falsa(datos: dict) -> dict:
         "nivel_riesgo_predicho": "medio",
         "nivel_riesgo_codificado": 1,
         "probabilidad": 0.8,
+        "riesgo_insuficiencia_capacidad": 0.594,
         "probabilidades_por_clase": {
             "bajo": 0.1,
             "medio": 0.8,
@@ -43,6 +44,53 @@ def prediccion_falsa(datos: dict) -> dict:
         "variables_principales": [
             {"variable": "ocupacion_estimada", "valor": 0.81}
         ],
+        "color_semaforo": "amarillo",
+        "interpretacion_riesgo": (
+            "Existen señales de presión hospitalaria que requieren seguimiento."
+        ),
+        "recomendacion_riesgo": (
+            "Revisar indicadores, validar tendencia de ingresos y preparar "
+            "acciones preventivas. El resultado es referencial. No asigna "
+            "camas automáticamente y no reemplaza decisiones clínicas."
+        ),
+        "factores_explicativos": [
+            "La ocupación estimada muestra presión moderada.",
+            "El modelo también considera comportamiento histórico, tendencias "
+            "y características del servicio.",
+        ],
+        "indicadores_calculados": {
+            "ocupacion_estimada": 0.81,
+            "presion_ingresos_camas": 0.83,
+            "promedio_estancia": 4.8,
+            "rotacion_camas": 0.73,
+            "diferencia_ingresos_egresos": 10,
+            "ratio_camas_disponibles": 1.0,
+            "total_ingresos": 83,
+            "total_egresos": 73,
+            "total_camas": 100,
+            "total_camas_disponibles": 3100,
+        },
+        "causa_principal_riesgo": "Demanda supera egresos",
+        "brecha_operativa": 40,
+        "nivel_brecha_operativa": "Brecha en observación",
+        "diagnostico_operativo": (
+            "Para el siguiente mes, el servicio evaluado presenta riesgo MEDIO "
+            "de insuficiencia de capacidad asistencial."
+        ),
+        "recomendaciones_operativas": [
+            "Revisar si los egresos programados compensan los ingresos esperados."
+        ],
+        "acciones_prioritarias": [
+            "Revisar servicio prioritario.",
+            "Comunicar alerta preventiva a gestión hospitalaria.",
+        ],
+        "interpretacion_modelo": (
+            "El modelo XGBoost clasifica el riesgo del siguiente mes."
+        ),
+        "confianza_prediccion": 0.8,
+        "probabilidad_riesgo_bajo": 0.1,
+        "probabilidad_riesgo_medio": 0.8,
+        "probabilidad_riesgo_alto": 0.1,
     }
 
 
@@ -94,6 +142,12 @@ def test_predict_devuelve_periodo_siguiente_y_calcula_indicadores(
     assert cuerpo["periodo_actual"] == "2024-03"
     assert cuerpo["periodo_predicho"] == "2024-04"
     assert cuerpo["advertencia_historial"] is None
+    assert cuerpo["color_semaforo"] == "amarillo"
+    assert cuerpo["factores_explicativos"]
+    assert cuerpo["causa_principal_riesgo"] == "Demanda supera egresos"
+    assert cuerpo["nivel_brecha_operativa"] == "Brecha en observación"
+    assert cuerpo["probabilidad_riesgo_medio"] == pytest.approx(0.8)
+    assert "referencial" in cuerpo["recomendacion_riesgo"]
     assert registro_recibido["dias_mes"] == 31
     assert "promedio_movil_3m_ingresos" in registro_recibido
     assert registro_recibido["presion_ingresos_camas"] == pytest.approx(0.83)

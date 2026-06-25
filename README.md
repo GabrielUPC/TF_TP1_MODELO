@@ -15,6 +15,88 @@ El resultado es referencial. No reemplaza decisiones clínicas, no asigna camas
 automáticamente, no decide hospitalizaciones, no funciona como historia clínica
 electrónica y no sustituye los sistemas internos de una IPRESS.
 
+## Alcance, granularidad, indicadores y control de carga
+
+El alcance actual usa la Tabla D1 de hospitalización y camas. No incorpora
+todavía tablas A, J ni H; esas fuentes quedan como ampliaciones futuras para
+enriquecer contexto, no para cambiar el contrato principal ya integrado.
+
+La unidad de análisis es mensual:
+
+```text
+1 registro = 1 IPRESS + 1 mes + 1 servicio hospitalario
+```
+
+La plataforma no trabaja a nivel de paciente, no interpreta eventos diarios, no
+opera en tiempo real, no asigna camas automáticamente y no reemplaza decisiones
+clínicas. La predicción usa los datos del mes actual para estimar el riesgo del
+siguiente mes.
+
+La carga mensual se valida con:
+
+```powershell
+py src\validar_plantilla.py ruta_del_archivo.csv
+```
+
+También acepta archivos Excel (`.xlsx` o `.xls`). El validador normaliza alias
+como `codigo_renipress`, `servicio_hospitalario`, `ingresos`, `egresos`,
+`estancias`, `pacientes_cama`, `camas_totales` y
+`camas_disponibles_habilitadas` hacia las columnas canónicas del modelo.
+
+La clave de granularidad vigente es:
+
+```text
+codigo_ipress + anio + mes + servicio_hospitalizacion
+```
+
+No se permite más de un registro vigente con la misma IPRESS, año, mes y
+servicio hospitalario.
+
+Los indicadores se interpretan como señales de presión operativa. Por ejemplo,
+`ocupacion_estimada` es un ratio y debe mostrarse como porcentaje: `0.85` se
+lee como `85%`, `1.37` como `137%` y `1.4` como `140%`. Un valor mayor o igual
+a `100%` indica que el uso acumulado supera la capacidad mensual registrada.
+
+El riesgo predicho se comunica como semáforo operacional:
+
+- `bajo`: capacidad aparentemente estable frente a la demanda esperada.
+- `medio`: señales de presión hospitalaria que requieren seguimiento.
+- `alto`: posible insuficiencia de capacidad asistencial para el siguiente mes.
+
+La respuesta incluye recomendación y factores explicativos. Estos factores
+resumen presiones como ocupación alta, uso que supera capacidad, estancias
+prolongadas, presión ingresos/camas y el comportamiento histórico, tendencias y
+características del servicio consideradas por el modelo.
+
+## Soporte operativo a la decisión
+
+Además de predecir riesgo `bajo`, `medio` o `alto` del siguiente mes, `/predict`
+devuelve soporte operativo para que el usuario priorice acciones preventivas.
+Este soporte se genera con reglas transparentes sobre indicadores mensuales de
+demanda y capacidad, sin cambiar el modelo XGBoost ni el horizonte predictivo.
+
+La respuesta incluye:
+
+- `indicadores_calculados`: ocupación estimada, presión ingresos/camas,
+  promedio de estancia, rotación, diferencia ingresos-egresos, ratio de camas
+  disponibles y capacidad registrada.
+- `causa_principal_riesgo`: causa operativa dominante, por ejemplo ocupación
+  crítica, demanda supera egresos, estancia prolongada o capacidad disponible
+  limitada.
+- `brecha_operativa` y `nivel_brecha_operativa`: puntaje preventivo de 0 a 100
+  clasificado como brecha controlada, en observación o crítica.
+- `diagnostico_operativo`: lectura del riesgo del siguiente mes en lenguaje de
+  gestión hospitalaria.
+- `recomendaciones_operativas` y `acciones_prioritarias`: medidas sugeridas
+  para seguimiento, coordinación y revisión de datos/capacidad registrada.
+- `interpretacion_modelo`, `confianza_prediccion` y probabilidades explícitas
+  por clase.
+
+La brecha operativa no representa una falta exacta de camas en tiempo real. Es
+una señal preventiva que ayuda a priorizar gestión del servicio antes del
+siguiente mes. El sistema no crea camas, no asigna camas, no decide altas y no
+reemplaza decisiones clínicas.
+
 ## Flujo predictivo
 
 El rediseño cambia el problema anterior:
@@ -274,8 +356,15 @@ La API calcula internamente indicadores, estacionalidad, promedios móviles y
 tendencias. Si no recibe los dos meses previos, utiliza la información
 disponible y devuelve `advertencia_historial`.
 
-La respuesta incluye periodo actual, periodo predicho, riesgo, probabilidad por
-clase, variables principales, advertencia de historial y mensaje de alcance.
+La respuesta incluye periodo actual, periodo predicho, riesgo, semáforo,
+probabilidad por clase, variables principales, factores explicativos,
+recomendación, advertencia de historial y mensaje de alcance.
+
+Para revisar métricas sin reentrenar:
+
+```powershell
+py src\ver_metricas.py
+```
 
 ### GET /metadata
 
