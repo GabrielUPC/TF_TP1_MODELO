@@ -110,11 +110,43 @@ def ratio_camas_disponibles(
     total_camas_disponibles: Any,
     capacidad: Any,
 ) -> Any:
+    """Consistencia: días-cama reportados / capacidad calendario teórica.
+
+    Se conserva el nombre público. No es un porcentaje de camas libres:
+    1.0 significa que los días-cama reportados coinciden con camas × días_mes.
+    """
     return _division_segura(total_camas_disponibles, capacidad)
 
 
-def ocupacion_estimada(total_pacientes_camas: Any, capacidad: Any) -> Any:
-    return _division_segura(total_pacientes_camas, capacidad)
+def ocupacion_estimada(
+    total_pacientes_camas: Any,
+    total_camas_disponibles: Any,
+) -> Any:
+    """Pacientes-día / días-cama disponibles reportados (ratio, sin ×100).
+
+    Los nombres públicos se conservan por compatibilidad con D1 y la API.
+    El retorno técnico 0.0 para denominador cero no acredita ocupación nula;
+    esos registros requieren validación de calidad (Q06 si hay pacientes-día).
+    """
+    for nombre, valores in (
+        ("total_pacientes_camas", total_pacientes_camas),
+        ("total_camas_disponibles", total_camas_disponibles),
+    ):
+        try:
+            numeros = np.asarray(valores, dtype=float)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"{nombre} debe contener números finitos no negativos.") from error
+        if not np.all(np.isfinite(numeros) & (numeros >= 0)):
+            raise ValueError(f"{nombre} debe contener números finitos no negativos.")
+
+    try:
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            resultado = _division_segura(total_pacientes_camas, total_camas_disponibles)
+    except (FloatingPointError, OverflowError) as error:
+        raise ValueError("No se pudo calcular una ocupación finita.") from error
+    if not np.all(np.isfinite(resultado)):
+        raise ValueError("No se pudo calcular una ocupación finita.")
+    return resultado
 
 
 def presion_ingresos_camas(total_ingresos: Any, total_camas: Any) -> Any:
@@ -168,7 +200,7 @@ def agregar_indicadores_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     )
     resultado["ocupacion_estimada"] = ocupacion_estimada(
         resultado["total_pacientes_camas"],
-        capacidad,
+        resultado["total_camas_disponibles"],
     )
     resultado["presion_ingresos_camas"] = presion_ingresos_camas(
         resultado["total_ingresos"],
@@ -208,7 +240,7 @@ def agregar_indicadores_registro(datos: Mapping[str, Any]) -> dict[str, Any]:
             ),
             "ocupacion_estimada": ocupacion_estimada(
                 resultado["total_pacientes_camas"],
-                capacidad,
+                resultado["total_camas_disponibles"],
             ),
             "presion_ingresos_camas": presion_ingresos_camas(
                 resultado["total_ingresos"],

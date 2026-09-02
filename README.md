@@ -221,8 +221,8 @@ Las fórmulas están centralizadas en `src/indicadores.py`:
 - `capacidad_mensual`: camas totales por días del mes.
 - `promedio_estancia`: estancias / egresos.
 - `tasa_fallecidos`: fallecidos / egresos.
-- `ratio_camas_disponibles`: camas-día disponibles / capacidad mensual.
-- `ocupacion_estimada`: pacientes-cama / capacidad mensual.
+- `ratio_camas_disponibles`: días-cama disponibles reportados / (camas totales × días del mes). Es un indicador de consistencia con la capacidad calendario teórica, **no un porcentaje de camas libres**.
+- `ocupacion_estimada`: pacientes-día / días-cama disponibles reportados (`total_pacientes_camas / total_camas_disponibles`). Se almacena como ratio: 0.8 equivale a 80 %, sin multiplicar por 100 dentro del modelo.
 - `presion_ingresos_camas`: ingresos / camas totales.
 - `rotacion_camas`: egresos / camas totales.
 - `diferencia_ingresos_egresos`: ingresos - egresos.
@@ -230,6 +230,26 @@ Las fórmulas están centralizadas en `src/indicadores.py`:
 Las divisiones entre cero están controladas. Si hay ingresos con cero camas, la
 presión conserva el número de ingresos como señal extrema y el procesamiento
 registra una advertencia.
+
+Los nombres públicos se conservan: `total_pacientes_camas` representa pacientes-día
+y `total_camas_disponibles` representa días-cama disponibles, tanto para
+`NRO_TOTAL_CAMAS_DISPONIB` como para su alias `DIAS_CAMA_DISPONIBLE`. La ocupación
+rechaza números negativos, no numéricos, no finitos y desbordamientos. Para cero
+días-cama se conserva el retorno técnico 0.0; no demuestra ocupación real nula
+ni sustituye la validación Q06. No se recortan valores de ocupación mayores a 1.
+
+La fórmula anterior utilizaba pacientes-día / (camas × días del mes). La nueva
+se aplica en la preparación y en FastAPI mediante las funciones compartidas de
+`indicadores.py`, tanto al registro actual como al historial. Las definiciones
+de riesgo, umbrales y percentiles no se modifican, aunque sus resultados derivados
+pueden cambiar al recalcular la ocupación.
+
+Pendientes fuera de este cambio: `crear_riesgo_actual` aún usa el ratio con los
+umbrales 0.10/0.20; `soporte_decision.py` aún asocia un ratio bajo con “Capacidad
+disponible limitada” y lo incorpora a la brecha operativa. Esas interpretaciones
+no equivalen a camas libres y requieren una revisión separada. Los datasets
+procesados y modelos ya guardados no se regeneran automáticamente: un modelo
+entrenado con la ocupación anterior no queda validado para la fórmula nueva.
 
 ## Entrenamiento
 
