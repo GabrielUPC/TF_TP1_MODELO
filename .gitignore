@@ -5,3 +5,4 @@ __pycache__/
 models/*.pkl
 .pytest_cache/
 .env
+data/quality/hallazgos_calidad.csv
