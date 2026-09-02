@@ -1,17 +1,34 @@
 import json
-import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 if __package__:
+    from .tratamiento_capacidad import apartar_meses_pendientes, huellas_raw, sha256_archivo
+    from .datos_raw import (
+        ALIAS_COLUMNAS, COLUMNAS_AGRUPACION, COLUMNAS_NUMERICAS, COLUMNAS_TEXTO,
+        CSVVacioError, MENSAJE_CSV_VACIO, SECTORES_PUBLICOS, _detectar_formato,
+        _es_archivo_temporal, leer_csv, limpiar_texto, listar_archivos_csv,
+        mascara_hospitalizacion_valida, mascara_ipress_publicas_lima,
+        normalizar_columnas, validar_columnas,
+    )
+    from .calidad_datos import auditar_directorio
     from .indicadores import agregar_indicadores_dataframe
     from .variables_temporales import (
         COLUMNAS_TEMPORALES,
         agregar_variables_temporales,
     )
 else:
+    from tratamiento_capacidad import apartar_meses_pendientes, huellas_raw, sha256_archivo
+    from datos_raw import (
+        ALIAS_COLUMNAS, COLUMNAS_AGRUPACION, COLUMNAS_NUMERICAS, COLUMNAS_TEXTO,
+        CSVVacioError, MENSAJE_CSV_VACIO, SECTORES_PUBLICOS, _detectar_formato,
+        _es_archivo_temporal, leer_csv, limpiar_texto, listar_archivos_csv,
+        mascara_hospitalizacion_valida, mascara_ipress_publicas_lima,
+        normalizar_columnas, validar_columnas,
+    )
+    from calidad_datos import auditar_directorio
     from indicadores import agregar_indicadores_dataframe
     from variables_temporales import (
         COLUMNAS_TEMPORALES,
@@ -24,59 +41,7 @@ RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 OUTPUT_PATH = PROCESSED_DIR / "dataset_modelo_ipress.csv"
 DATASET_METADATA_PATH = PROCESSED_DIR / "dataset_metadata.json"
-
-SECTORES_PUBLICOS = {
-    "MINSA",
-    "ESSALUD",
-    "GOBIERNO REGIONAL",
-    "SANIDAD DE LA POLICIA NACIONAL DEL PERU",
-    "SANIDAD DEL EJERCITO DEL PERU",
-    "SANIDAD DE LA MARINA DE GUERRA DEL PERU",
-    "SANIDAD DE LA FUERZA AEREA DEL PERU",
-}
-
-COLUMNAS_NUMERICAS = [
-    "NRO_TOTAL_HOSPIT_ING",
-    "NRO_TOTAL_HOSPIT_EGR",
-    "NRO_TOTAL_ESTANCIAS",
-    "NRO_TOTAL_PACIENTES_CAMAS",
-    "NRO_TOTAL_CAMAS",
-    "NRO_TOTAL_CAMAS_DISPONIB",
-    "NRO_TOTAL_FALLECIDOS",
-]
-
-COLUMNAS_AGRUPACION = [
-    "ANHO",
-    "MES",
-    "UBIGEO",
-    "DEPARTAMENTO",
-    "PROVINCIA",
-    "DISTRITO",
-    "SECTOR",
-    "CATEGORIA",
-    "CO_IPRESS",
-    "RAZON_SOC",
-    "ID_HOSPITALIZACION",
-    "HOSPITALIZACION",
-    "ARCHIVO_ORIGEN",
-]
-
-COLUMNAS_TEXTO = [
-    "UBIGEO",
-    "DEPARTAMENTO",
-    "PROVINCIA",
-    "DISTRITO",
-    "SECTOR",
-    "CATEGORIA",
-    "CO_IPRESS",
-    "RAZON_SOC",
-    "ID_HOSPITALIZACION",
-    "HOSPITALIZACION",
-]
-
-ALIAS_COLUMNAS = {
-    "DIAS_CAMA_DISPONIBLE": "NRO_TOTAL_CAMAS_DISPONIB",
-}
+QUALITY_DIR = PROJECT_ROOT / "data" / "quality"
 
 RENOMBRE_COLUMNAS = {
     "ANHO": "anio",
@@ -154,112 +119,11 @@ GRUPO_SERIE_TEMPORAL = [
 
 MAPEO_RIESGO = {"bajo": 0, "medio": 1, "alto": 2}
 
-MENSAJE_CSV_VACIO = (
-    "El archivo CSV original está vacío. Coloque datasets reales en data/raw/ "
-    "antes de ejecutar el procesamiento."
-)
 
-
-class CSVVacioError(ValueError):
-    """Indica que un CSV existe pero no aporta filas utilizables."""
-
-
-def _detectar_formato(path: Path) -> tuple[str, str]:
-    muestra = path.read_bytes()[:8192]
-    for encoding in ("utf-8-sig", "latin1"):
-        try:
-            texto = muestra.decode(encoding)
-            break
-        except UnicodeDecodeError:
-            continue
-    else:
-        raise ValueError(f"No se pudo determinar la codificación de {path.name}.")
-
-    primera_linea = next(
-        (linea for linea in texto.splitlines() if linea.strip()),
-        "",
-    )
-    if not primera_linea:
-        raise CSVVacioError(MENSAJE_CSV_VACIO)
-
-    separador = (
-        ";" if primera_linea.count(";") > primera_linea.count(",") else ","
-    )
-    return encoding, separador
-
-
-def leer_csv(path: Path) -> pd.DataFrame:
-    if not path.is_file():
-        raise FileNotFoundError(f"No se encontró el archivo CSV: {path}")
-    if path.stat().st_size == 0:
-        raise CSVVacioError(MENSAJE_CSV_VACIO)
-
-    encoding, separador = _detectar_formato(path)
-    try:
-        df = pd.read_csv(
-            path,
-            encoding=encoding,
-            sep=separador,
-            dtype=str,
-        )
-    except pd.errors.EmptyDataError as error:
-        raise CSVVacioError(MENSAJE_CSV_VACIO) from error
-    except pd.errors.ParserError as error:
-        raise ValueError(
-            f"No se pudo interpretar el archivo {path.name}: {error}"
-        ) from error
-
-    if df.columns.empty:
-        raise CSVVacioError(f"El archivo {path.name} no contiene columnas.")
-    if df.empty:
-        raise CSVVacioError(f"El archivo {path.name} no contiene filas.")
-    return df
-
-
-def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
-    resultado = df.copy()
-    resultado.columns = [
-        re.sub(r"\s+", "_", str(columna).strip().upper())
-        for columna in resultado.columns
-    ]
-    renombres = {
-        alias: canonica
-        for alias, canonica in ALIAS_COLUMNAS.items()
-        if alias in resultado.columns and canonica not in resultado.columns
-    }
-    return resultado.rename(columns=renombres)
-
-
-def validar_columnas(df: pd.DataFrame, archivo: str | None = None) -> None:
-    requeridas = set(COLUMNAS_AGRUPACION[:-1] + COLUMNAS_NUMERICAS)
-    faltantes = sorted(requeridas.difference(df.columns))
-    if faltantes:
-        origen = f" en el archivo {archivo}" if archivo else ""
-        raise ValueError(
-            f"Faltan columnas obligatorias{origen}: " + ", ".join(faltantes)
-        )
-
-
-def _es_archivo_temporal(path: Path) -> bool:
-    return path.name.startswith(("~", ".", "$"))
-
-
-def leer_todos_los_csv(raw_dir: Path) -> pd.DataFrame:
-    if not raw_dir.is_dir():
-        raise FileNotFoundError(f"No se encontró el directorio raw: {raw_dir}")
-
-    archivos = sorted(
-        (
-            path
-            for path in raw_dir.glob("*.csv")
-            if path.is_file() and not _es_archivo_temporal(path)
-        ),
-        key=lambda path: path.name.lower(),
-    )
-    if not archivos:
-        raise FileNotFoundError(
-            f"No se encontraron archivos CSV válidos en {raw_dir}."
-        )
+def leer_todos_los_csv(
+    raw_dir: Path, *, archivos: list[Path] | None = None,
+) -> pd.DataFrame:
+    archivos = listar_archivos_csv(raw_dir) if archivos is None else archivos
 
     print(f"Leyendo archivos CSV desde {raw_dir}...")
     datasets: list[pd.DataFrame] = []
@@ -287,25 +151,12 @@ def leer_todos_los_csv(raw_dir: Path) -> pd.DataFrame:
     return combinado
 
 
-def limpiar_texto(serie: pd.Series) -> pd.Series:
-    return (
-        serie.astype("string")
-        .fillna("")
-        .str.strip()
-        .str.replace(r"\s+", " ", regex=True)
-        .str.upper()
-    )
-
-
 def limpiar_registros(df: pd.DataFrame) -> pd.DataFrame:
     resultado = df.drop_duplicates().copy()
     for columna in COLUMNAS_TEXTO:
         resultado[columna] = limpiar_texto(resultado[columna])
 
-    resultado = resultado[resultado["HOSPITALIZACION"].ne("")]
-    resultado = resultado[
-        ~resultado["ID_HOSPITALIZACION"].isin({"NE_0001", "NE_0002"})
-    ]
+    resultado = resultado.loc[mascara_hospitalizacion_valida(resultado)].copy()
     resultado["ANHO"] = pd.to_numeric(resultado["ANHO"], errors="coerce")
     resultado["MES"] = pd.to_numeric(resultado["MES"], errors="coerce")
     resultado = resultado.dropna(subset=["ANHO", "MES"])
@@ -328,11 +179,7 @@ def limpiar_registros(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def filtrar_ipress_publicas_lima(df: pd.DataFrame) -> pd.DataFrame:
-    mascara = (
-        df["DEPARTAMENTO"].eq("LIMA")
-        & df["PROVINCIA"].eq("LIMA")
-        & df["SECTOR"].isin(SECTORES_PUBLICOS)
-    )
+    mascara = mascara_ipress_publicas_lima(df)
     resultado = df.loc[mascara].copy()
     if resultado.empty:
         raise ValueError(
@@ -514,6 +361,8 @@ def _guardar_metadata_dataset(
     df_antes_objetivo: pd.DataFrame,
     df_entrenamiento: pd.DataFrame,
     percentiles: dict[str, float],
+    tratamiento: dict,
+    fuentes: dict[str, str],
 ) -> None:
     archivos = sorted(
         df_antes_objetivo["archivo_origen"].dropna().astype(str).unique().tolist()
@@ -526,6 +375,9 @@ def _guardar_metadata_dataset(
         )["periodo"].unique().tolist()
     )
     metadata = {
+        "tratamiento_capacidad": tratamiento,
+        "dataset_sha256": sha256_archivo(OUTPUT_PATH),
+        "raw_sha256": fuentes,
         "numero_filas_antes_objetivo_futuro": int(df_antes_objetivo.shape[0]),
         "numero_filas_entrenamiento": int(df_entrenamiento.shape[0]),
         "filas_eliminadas_sin_mes_siguiente": int(
@@ -555,7 +407,10 @@ def _guardar_metadata_dataset(
 
 
 def preparar_dataset() -> pd.DataFrame:
-    df = leer_todos_los_csv(RAW_DATA_DIR)
+    fuentes = huellas_raw(RAW_DATA_DIR)
+    # Los reportes deben existir antes de toda limpieza destructiva.
+    auditoria = auditar_directorio(RAW_DATA_DIR, QUALITY_DIR)
+    df = leer_todos_los_csv(RAW_DATA_DIR, archivos=auditoria.archivos_validos)
     filas_combinadas = len(df)
 
     print("\nLimpiando registros...")
@@ -565,6 +420,9 @@ def preparar_dataset() -> pd.DataFrame:
     print("Filtrando IPRESS públicas de Lima Metropolitana...")
     df = filtrar_ipress_publicas_lima(df)
     filas_filtradas = len(df)
+
+    print("Apartando meses pendientes Q05/Q06/Q07 antes de consolidar e inferir riesgo...")
+    df, tratamiento = apartar_meses_pendientes(df, QUALITY_DIR, raw_sha256=fuentes)
 
     print("Consolidando datos mensuales por IPRESS, servicio y origen...")
     df = consolidar_dataset(df)
@@ -580,9 +438,14 @@ def preparar_dataset() -> pd.DataFrame:
     filas_eliminadas = filas_antes_objetivo - len(df_entrenamiento)
     df_entrenamiento = df_entrenamiento[COLUMNAS_SALIDA]
 
+    if df_entrenamiento.empty:
+        raise ValueError("No quedan parejas de meses consecutivos después del tratamiento de capacidad.")
+    if huellas_raw(RAW_DATA_DIR) != fuentes:
+        raise ValueError("Los RAW cambiaron durante la preparación; vuelva a ejecutar sin modificar las fuentes.")
+
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     df_entrenamiento.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
-    _guardar_metadata_dataset(df, df_entrenamiento, percentiles)
+    _guardar_metadata_dataset(df, df_entrenamiento, percentiles, tratamiento, fuentes)
 
     periodos = sorted(df["anio"].astype(str) + "-" + df["mes"].astype(str).str.zfill(2))
     print("\nDataset preparado correctamente.")
