@@ -20,6 +20,9 @@ BASE = 'argmax'
 MAX_CAIDA_F1 = .02
 ARCHIVOS = ('resultados_reglas_decision.csv', 'resumen_reglas_decision.csv',
             'seleccion_regla_decision.json', 'calibracion_probabilidades.csv')
+ARCHIVOS_EXTENSION = ('resultados_reglas_extension_020.csv', 'resumen_reglas_extension_020.csv',
+                      'seleccion_regla_extension_020.json', 'probabilidades_reglas_extension_020.npz')
+TOLERANCIA_REPRODUCCION = 1e-10
 ORDEN = ['proporcion_alto_bajo_promedio', 'tasa_falsos_negativos_alto_promedio',
          'recall_alto_promedio', 'f1_macro_promedio', 'balanced_accuracy_promedio']
 CRITERIO = {'max_caida_f1_vs_D_argmax': MAX_CAIDA_F1, 'orden': ORDEN,
@@ -368,10 +371,149 @@ def evaluar_reglas(df, output_dir, *, motor=None, procedencia=None):
     return resultados, resumen, reporte
 
 
+def ejecutar_extension_020(df, destino, *, dataset_sha256, motor=None, archivo_probabilidades=None):
+    """Ruta aislada: reutiliza matrices verificadas o reproduce una vez por fold.
+
+    No modifica el experimento original. Una divergencia aborta sin relajar
+    tolerancias, reintentar fits ni abrir el año 2025 antes de la selección.
+    """
+    destino = Path(destino)
+    if any((destino/n).exists() for n in ARCHIVOS_EXTENSION):
+        raise FileExistsError('Ya existe la extensión; revisar su estado, no sobrescribir ni repetir 2025.')
+    referencia = pd.read_csv(destino/ARCHIVOS[0])
+    original = json.loads((destino/ARCHIVOS[2]).read_text(encoding='utf-8'))
+    if (original.get('procedencia', {}).get('dataset_sha256') != dataset_sha256
+            or original.get('anios_desarrollo') != list(ANIOS_DESARROLLO)
+            or original.get('conjunto_features') != 'D'):
+        raise ValueError('Dataset, años o features de referencia no coinciden con el experimento D.')
+    historico, folds, _ = ef.preparar_desarrollo(df)
+    columnas = original['columnas_predictoras']
+    if len(columnas) != len(set(columnas)) or set(columnas) & bt.ETIQUETAS:
+        raise ValueError('Predictores de referencia inválidos.')
+    archivo = Path(archivo_probabilidades) if archivo_probabilidades is not None else destino/'probabilidades_reglas_decision.npz'
+    if archivo_probabilidades is not None and not archivo.is_file():
+        raise FileNotFoundError('No existe el archivo de probabilidades indicado.')
+    disponibles = set()
+    if archivo.is_file():
+        with np.load(archivo, allow_pickle=False) as guardadas:
+            disponibles = set(guardadas.files)  # No leer la matriz 2025 todavía.
+    algoritmo = None
+    def obtener_motor():
+        nonlocal motor, algoritmo
+        if algoritmo is not None:
+            return
+        motor = motor if motor is not None else bt._motor_existente()
+        if [*motor.COLUMNAS_PREDICTORAS, *CONJUNTOS['D']] != columnas:
+            raise ValueError('Las features actuales difieren de la referencia D.')
+        algoritmo = motor.obtener_modelos().get('XGBoost')
+        if algoritmo is None:
+            raise RuntimeError('XGBoost no disponible.')
+        parametros = json.loads(pd.Series({'p': algoritmo.get_params()}).to_json())['p']
+        if parametros != original['hiperparametros_sin_modificar']:
+            raise ValueError('La configuración XGBoost no coincide con la original.')
+    # Fallar antes de crear salidas si falta el entorno necesario para desarrollo.
+    if any(f'p_{a}' not in disponibles for a in ANIOS_DESARROLLO):
+        obtener_motor()
+    reporte = {'version': 'extension_020_cli_v1', 'estado': 'desarrollo_iniciado',
+        'reglas_probadas': reglas_extension_020(), 'anios_desarrollo': list(ANIOS_DESARROLLO),
+        'criterio_seleccion': CRITERIO, 'tolerancia_argmax': {'atol': TOLERANCIA_REPRODUCCION, 'rtol': 0},
+        'procedencia': {'dataset_sha256': dataset_sha256,
+            'resultados_originales_sha256': hashlib.sha256((destino/ARCHIVOS[0]).read_bytes()).hexdigest(),
+            'seleccion_original_sha256': hashlib.sha256((destino/ARCHIVOS[2]).read_bytes()).hexdigest(),
+            'archivo_probabilidades': str(archivo) if archivo.is_file() else None,
+            'archivo_probabilidades_sha256': hashlib.sha256(archivo.read_bytes()).hexdigest() if archivo.is_file() else None},
+        'columnas_predictoras': columnas, 'hiperparametros': original['hiperparametros_sin_modificar'],
+        'verificacion_por_fold': [], 'regla_seleccionada': None, 'evaluacion_2025': None,
+        '2025_participo_en_seleccion': False, 'es_modelo_final_produccion': False,
+        'advertencia': '2025 ya observado: comprobación adicional, no holdout virgen. Reproducidas no significa reutilizadas; métricas iguales no prueban identidad de matrices.'}
+    ruta = destino/ARCHIVOS_EXTENSION[2]
+    opt._json(ruta, reporte, exclusivo=True)  # Reserva exclusiva antes del primer fit.
+    matrices = {}
+    def obtener_verificar(datos, fold, fase):
+        anio, train, test = fold
+        ref = referencia.loc[referencia.regla.eq(BASE) & referencia.anio_prueba.eq(anio) & referencia.fase.eq(fase)]
+        if len(ref) != 1:
+            raise ValueError(f'Falta referencia argmax única para {anio}.')
+        ref = ref.iloc[0]
+        registro = opt._registro(datos, test, train, BASE, anio, {})
+        if any(registro[c] != ref[c] for c in ['test_sha256', 'n_train', 'n_test']):
+            raise ValueError(f'No coinciden test o tamaños train/test de {anio}.')
+        if f'p_{anio}' in disponibles:
+            with np.load(archivo, allow_pickle=False) as guardadas:
+                p = validar_probabilidades(guardadas[f'p_{anio}']).copy()
+            origen = 'reutilizadas'
+        else:
+            obtener_motor()
+            print(f'Extensión 020 {anio}: reproducir un único ajuste XGBoost D', flush=True)
+            p = probabilidades_fold(motor, algoritmo, datos, train, test, columnas, anio)
+            origen = 'reproducidas'
+        huella = hashlib.sha256(np.ascontiguousarray(p).tobytes()).hexdigest()
+        igual = huella == ref.probabilidades_sha256
+        if origen == 'reutilizadas' and not igual:
+            raise ValueError(f'La matriz persistida {anio} no coincide con el hash original.')
+        actual = evaluar_probabilidades(datos, train, test, p, anio, [reglas_extension_020()[0]], fase).iloc[0]
+        campos = [*bt.METRICAS, *[f'predichos_{c}' for c in ['bajo', 'medio', 'alto']],
+                  *[f'proporcion_predicha_{c}' for c in ['bajo', 'medio', 'alto']]]
+        diferencias = {c: float(actual[c])-float(ref[c]) for c in campos}
+        if any(not np.isclose(float(actual[c]), float(ref[c]), atol=TOLERANCIA_REPRODUCCION,
+                              rtol=0, equal_nan=True) for c in campos):
+            raise ValueError(f'Argmax {anio} no reproduce la referencia con tolerancia 1e-10; no continuar.')
+        reporte['verificacion_por_fold'].append({'anio': anio, 'origen_probabilidades': origen,
+            'n_ajustes': int(origen == 'reproducidas'), 'test_sha256': registro['test_sha256'],
+            'probabilidades_sha256': huella, 'hash_original_probabilidades': ref.probabilidades_sha256,
+            'matriz_identica_por_hash': bool(igual), 'argmax_reproducido': True, 'deltas_argmax': diferencias})
+        matrices[f'p_{anio}'] = p
+        return p
+    try:
+        filas = []
+        for fold in folds:
+            p = obtener_verificar(historico, fold, 'desarrollo')
+            anio, train, test = fold
+            filas.append(evaluar_probabilidades(historico, train, test, p, anio, reglas_extension_020(), 'desarrollo'))
+        resultados = pd.concat(filas, ignore_index=True)
+        resumen, elegida = seleccionar_regla(resultados, reglas=reglas_extension_020())
+        resumen['reduce_ambos_errores'] = (resumen.delta_tasa_falsos_negativos_alto_promedio.lt(-1e-12)
+            & resumen.delta_proporcion_alto_bajo_promedio.lt(-1e-12))
+        reporte.update(estado='seleccion_congelada_antes_de_2025', regla_seleccionada=elegida,
+            metricas_promedio=resumen.to_dict(orient='records'))
+        opt._json(ruta, reporte)
+        resultados.to_csv(destino/ARCHIVOS_EXTENSION[0], index=False)
+        resumen.to_csv(destino/ARCHIVOS_EXTENSION[1], index=False)
+        np.savez_compressed(destino/ARCHIVOS_EXTENSION[3], **matrices)
+        # 2025 solo se construye/obtiene después de guardar la selección histórica.
+        anios = pd.PeriodIndex(df.periodo_predicho.astype(str), freq='M').year
+        final = df.loc[anios <= 2025].copy()
+        finales, _ = bt.crear_folds_expansivos(final)
+        fold = next((f for f in finales if f[0] == 2025), None)
+        if fold is None:
+            raise ValueError('2025 no elegible; selección histórica conservada.')
+        final = agregar_features_candidatas(final)
+        reporte['estado'] = 'comprobacion_2025_iniciada_no_repetir'
+        opt._json(ruta, reporte)
+        p = obtener_verificar(final, fold, 'comprobacion_2025')
+        anio, train, test = fold
+        reglas = [r for r in reglas_extension_020() if r['regla'] in {BASE, elegida}]
+        externas = evaluar_probabilidades(final, train, test, p, anio, reglas, 'comprobacion_2025')
+        reporte.update(estado='completado_sin_produccion', evaluacion_2025=externas.to_dict(orient='records'))
+        resultados = pd.concat([resultados, externas], ignore_index=True)
+        resultados.to_csv(destino/ARCHIVOS_EXTENSION[0], index=False)
+        np.savez_compressed(destino/ARCHIVOS_EXTENSION[3], **matrices)
+        opt._json(ruta, reporte)
+        return resultados, resumen, reporte
+    except Exception as error:
+        reporte.update(estado='fallido_no_reintentar_sin_revision', error=str(error))
+        opt._json(ruta, reporte)
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--solo-plan', action='store_true', help='Verificar años sin ajustar modelos ni escribir resultados')
+    parser.add_argument('--extension-020', action='store_true', help='Solo seis reglas; salidas separadas y reproducción verificada si faltan matrices')
+    parser.add_argument('--probabilidades-originales', type=Path, help='NPZ opcional con p_2018,...,p_2025; requiere --extension-020')
     args = parser.parse_args()
+    if args.probabilidades_originales is not None and not args.extension_020:
+        parser.error('--probabilidades-originales requiere --extension-020')
     ruta = bt.ROOT / 'data/processed/dataset_modelo_ipress.csv'
     contenido = ruta.read_bytes()
     huella = hashlib.sha256(contenido).hexdigest()
@@ -381,9 +523,23 @@ def main():
     df = pd.read_csv(io.BytesIO(contenido), dtype={'codigo_ipress': str})
     if args.solo_plan:
         _, folds, _ = ef.preparar_desarrollo(df)
-        print(json.dumps({'reglas': reglas_candidatas(), 'anios_desarrollo': [f[0] for f in folds],
-            'comprobacion_adicional': 2025, 'ajustes_totales_previstos': len(folds)+1,
+        print(json.dumps({'reglas': reglas_extension_020() if args.extension_020 else reglas_candidatas(), 'anios_desarrollo': [f[0] for f in folds],
+            'comprobacion_adicional': 2025,
+            ('max_ajustes_si_reproducir' if args.extension_020 else 'ajustes_totales_previstos'): len(folds)+1,
             'conjunto': 'D', 'dataset_sha256': huella}, ensure_ascii=False, indent=2))
+    elif args.extension_020:
+        protegidos = [ruta, ruta.parent/'dataset_metadata.json',
+            *[bt.ROOT/'models'/n for n in ARCHIVOS], *bt.ROOT.joinpath('models').glob('*.joblib')]
+        hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in protegidos}
+        try:
+            _, resumen, reporte = ejecutar_extension_020(df, bt.ROOT/'models', dataset_sha256=huella,
+                archivo_probabilidades=args.probabilidades_originales)
+            print(resumen.to_string(index=False))
+            print(json.dumps({'regla_seleccionada': reporte['regla_seleccionada'],
+                              'evaluacion_2025': reporte['evaluacion_2025']}, ensure_ascii=False, default=str))
+        finally:
+            if any(hashlib.sha256(p.read_bytes()).hexdigest() != h for p, h in hashes.items()):
+                raise RuntimeError('Cambió un archivo original protegido durante la extensión.')
     else:
         _, resumen, reporte = evaluar_reglas(df, bt.ROOT / 'models', procedencia={'dataset_sha256': huella})
         print(resumen[['regla', *ORDEN, 'admisible', 'ranking']].to_string(index=False))

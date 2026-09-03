@@ -205,16 +205,81 @@ Verifica también las huellas originales de 2025 y compara únicamente argmax co
 la seleccionada. No ajusta modelos. Las dos funciones separan explícitamente la
 selección histórica de la comprobación, que no debe usarse para reescoger la regla.
 
-**Bloqueo encontrado:** los resultados anteriores ya existen, pero el evaluador
+**Limitación del experimento anterior:** los resultados anteriores ya existen, pero el evaluador
 que los produjo conservó métricas y hashes, no las matrices por registro. Un hash,
 un resumen de calibración o una matriz de confusión no permiten recuperar esas
-probabilidades. Se requiere el archivo o la matriz en memoria de la ejecución
-original. No se ha reentrenado para recrearlas ni se han sobrescrito resultados.
+probabilidades. Las funciones estrictas anteriores requieren el archivo o la matriz
+original. La nueva ruta CLI descrita abajo permite la reproducción explícitamente
+autorizada, sin presentarla como reutilización.
 El comando habitual `python -m src.evaluar_reglas_decision` sigue correspondiendo
-al experimento anterior: **no usarlo para esta extensión**.
+al experimento anterior: **añadir --extension-020 para esta extensión**.
 
 Validación de la extensión: 35 tests del evaluador aprobados (tres nuevos),
 incluyendo espacio exacto de seis reglas, límites inclusivos, prioridad de Alto,
 preservación de probabilidades, rechazo de hashes diferentes y prohibición de
 obtener probabilidades nuevas. Falta la evaluación real de las dos combinaciones
 hasta disponer de las matrices originales.
+
+## CLI de la extensión 0.20
+
+```powershell
+python -m src.evaluar_reglas_decision --extension-020 --solo-plan
+python -m src.evaluar_reglas_decision --extension-020
+```
+
+El primer comando solo valida años y muestra las seis reglas, sin ajustes ni
+escrituras. El segundo ejecuta únicamente la microcomparación. Sin el flag, el
+experimento original conserva su comportamiento y sus doce reglas.
+
+Por defecto busca `models/probabilidades_reglas_decision.npz`. Opcionalmente:
+
+```powershell
+python -m src.evaluar_reglas_decision --extension-020 --probabilidades-originales models/matrices_originales.npz
+```
+
+Formato: arrays `p_2018`, `p_2021`, `p_2022`, `p_2023`, `p_2024`, `p_2025`,
+columnas Bajo/Medio/Alto y filas en el orden original del test. No se permite
+pickle. Cada año se carga solo al necesitarlo; 2025 después de la selección.
+
+- Si existe la matriz de un año, debe coincidir su hash con la referencia;
+  una matriz corrupta o distinta aborta, no activa un ajuste silencioso.
+- Si falta la matriz, se reproduce exactamente un ajuste XGBoost D del fold
+  con la fábrica y pesos existentes. Se comprueban orden de features y todos
+  los hiperparámetros contra el JSON original, antes del ajuste.
+- Para ambos casos se exige igual dataset SHA-256, hash del test, n_train y
+  n_test. Todas las métricas argmax, ROC-AUC, conteos y distribución predicha
+  deben coincidir con el CSV original usando **atol=1e-10, rtol=0**; NaN solo
+  coincide con NaN. No se relaja la tolerancia ni se repite el fit si diverge.
+- El JSON declara por fold `origen_probabilidades`: `reutilizadas` o
+  `reproducidas`, cantidad de ajustes, ambos hashes y deltas de las métricas.
+  Una matriz reproducida se declara así incluso si resulta idéntica por hash.
+  Métricas iguales por sí solas no demuestran identidad de probabilidades.
+
+Se crean exclusivamente salidas separadas:
+
+- `models/resultados_reglas_extension_020.csv`: 30 filas históricas de las seis
+  reglas y una o dos de comprobación 2025 (argmax y elegida).
+- `models/resumen_reglas_extension_020.csv`: métricas/distribuciones, selección
+  y `reduce_ambos_errores`, solo desarrollo.
+- `models/seleccion_regla_extension_020.json`: procedencia, verificaciones,
+  criterio existente, selección congelada antes de 2025 y comprobación posterior.
+- `models/probabilidades_reglas_extension_020.npz`: las matrices utilizadas por
+  la extensión, para conservarlas; no contiene un modelo ni reemplaza matrices
+  o resultados originales.
+
+El criterio se mantiene, sin favorecer automáticamente combinada_0.40_0.20 ni
+cambiar umbrales tras ver métricas. La selección se escribe antes de construir
+o evaluar 2025. Si ya existe cualquiera de estas salidas, se detiene. El JSON se
+reserva antes del primer ajuste; un fallo posterior conserva el estado y evita
+reintentos automáticos. Se verifican los hashes de D, su metadata, los cuatro
+reportes originales y los `.joblib` antes/después. No se guarda producción.
+
+Verificación CLI: 11 tests nuevos; 46 aprobados junto a los del evaluador.
+Suite ejecutable: **341 passed, 1 warning**, excluyendo
+`tests/test_entrenar_modelo.py` por el problema conocido de Python/scikit-learn.
+Se verificaron flags, ruta original intacta, reutilización sin fits, reproducción
+una vez por fold, divergencias que abortan, congelación antes de 2025 y salidas
+originales intactas. El plan real mostró las seis reglas y años correctos.
+La ejecución real se intentó, pero `.venv` devolvió «Acceso denegado» y el Python
+alternativo no cargó scikit-learn. No se inició ningún ajuste ni se generaron
+artefactos reales de la extensión en ese intento.
