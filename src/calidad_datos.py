@@ -260,7 +260,7 @@ def auditar_directorio(raw_dir: Path = RAW_DATA_DIR, quality_dir: Path = QUALITY
         "archivos_con_conteo_desconocido": sum(r["filas_totales"] is None for r in resumenes),
         "totales": {c: sum(r[c] or 0 for r in resumenes) for c in campos},
         "criterios": {
-            "alcance_modelo": "LIMA/LIMA, sectores públicos y hospitalización del pipeline; antes de deduplicar, validar período y construir target",
+            "alcance_modelo": "LIMA/LIMA, sectores públicos e ID_HOSPITALIZACION con prefijo 24 o 25 (texto sin espacios extremos, incluido 245600); el nombre no determina el alcance; antes de deduplicar, validar período y construir target",
             "unidades": "Q01/Q02: celdas; Q03-Q09: filas; Q04: repeticiones después de la primera dentro de cada archivo; Q00: archivos",
             "dias_cama": "DIAS_CAMA_DISPONIBLE y NRO_TOTAL_CAMAS_DISPONIB son días-cama disponibles, no camas libres",
             "periodo": {"anio_minimo": ANIO_MINIMO, "anio_maximo": ANIO_MAXIMO},

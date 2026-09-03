@@ -1,7 +1,7 @@
 {
   "tratamiento_capacidad": {
     "version": "capacidad_q05_q06_q07_q08_v3",
-    "generado_utc": "2026-09-03T01:01:04.817372+00:00",
+    "generado_utc": "2026-09-03T01:29:12.600680+00:00",
     "raw_sha256": {
       "ConsultaD1_2024_v22.csv": "dcdb9c0f8c81c95db378e0e5952de45d090c0a1a149d79b3dac635c1b13975bb",
       "ConsultaD1_2025_v20.csv": "142c6f98beaf82b0ab6b18f0be6152f15d242bf882c6e8cdffacfbde3767f10d",
@@ -36,7 +36,7 @@
       "Q09"
     ]
   },
-  "dataset_sha256": "272fe6b22168c1d1a40d02bf03a97c00167910801079eab892d8e02109b6da20",
+  "dataset_sha256": "0fc1ef1642edc83433f50733fe25a0c93dd69849c30e419b0c39490a291c341d",
   "raw_sha256": {
     "ConsultaD1_2024_v22.csv": "dcdb9c0f8c81c95db378e0e5952de45d090c0a1a149d79b3dac635c1b13975bb",
     "ConsultaD1_2025_v20.csv": "142c6f98beaf82b0ab6b18f0be6152f15d242bf882c6e8cdffacfbde3767f10d",
@@ -221,11 +221,26 @@
     "ConsultaD1_Hospitalizaciones_Especialidad_2022_v24.csv",
     "ConsultaD1_Hospitalizaciones_Especialidad_2023_v24.csv"
   ],
-  "percentiles_riesgo_actual": {
-    "presion_ingresos_camas_percentil_50": 2.588235294117647,
-    "presion_ingresos_camas_percentil_75": 4.8,
-    "cantidad_valores_validos": 48597
+  "percentiles_riesgo_actual": {},
+  "metodo_percentiles": "No se utilizan percentiles para construir la etiqueta.",
+  "definicion_target": {
+    "version": "riesgo_ocupacion_observada_v2",
+    "indicador": "ocupacion_estimada",
+    "formula": "total_pacientes_camas / total_camas_disponibles",
+    "unidad": "pacientes-día / días-cama disponibles",
+    "nivel_riesgo_actual": {
+      "bajo": "ocupacion_estimada < 0.70",
+      "medio": "0.70 <= ocupacion_estimada < 0.85",
+      "alto": "ocupacion_estimada >= 0.85"
+    },
+    "codificacion": {
+      "bajo": 0,
+      "medio": 1,
+      "alto": 2
+    },
+    "nivel_riesgo_siguiente_mes": "nivel_riesgo_actual del mes calendario t+1 de la misma IPRESS y servicio",
+    "usa_ratio_camas_disponibles": false,
+    "usa_percentiles_presion_ingresos_camas": false
   },
-  "metodo_percentiles": "Percentiles 50 y 75 calculados globalmente sobre valores finitos de presion_ingresos_camas después de limpieza, filtro y consolidación.",
   "regla_continuidad_objetivo": "Solo se conserva una fila cuando existe exactamente el siguiente mes calendario para la misma IPRESS y servicio."
 }

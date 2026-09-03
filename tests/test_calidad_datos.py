@@ -10,7 +10,7 @@ import pytest
 
 from src import preparar_dataset as preparacion
 from src.calidad_datos import COLUMNAS_HALLAZGOS, auditar_dataframe, auditar_directorio
-from src.datos_raw import leer_csv
+from src.datos_raw import leer_csv, mascara_hospitalizacion_valida
 
 
 def fila(**cambios):
@@ -154,10 +154,10 @@ def test_alcance_modelo_reutiliza_filtros_sin_ocultar_errores():
         fila(DEPARTAMENTO=" lima ", SECTOR=" minsa ", MES="13", NRO_TOTAL_CAMAS="0"),
     ])
     resultado = auditar_dataframe(df)
-    assert resultado.resumen["filas_en_alcance_modelo"] == 2
-    assert resultado.resumen["filas_en_alcance_modelo_periodo_valido"] == 1
+    assert resultado.resumen["filas_en_alcance_modelo"] == 3
+    assert resultado.resumen["filas_en_alcance_modelo_periodo_valido"] == 2
     assert resultado.resumen["cero_camas_con_actividad"] == 8
-    assert resultado.resumen["cero_camas_con_actividad_alcance_modelo"] == 2
+    assert resultado.resumen["cero_camas_con_actividad_alcance_modelo"] == 3
     assert resultado.resumen["periodos_invalidos_alcance_modelo"] == 1
 
 
@@ -285,3 +285,43 @@ def test_cli_modulo_auditoria_con_csv_artificial(tmp_path, caso, codigo):
         assert hallazgos.empty
     else:
         assert caso.upper() in set(hallazgos.regla)
+
+
+@pytest.mark.parametrize("identificador,incluido", [
+    ("241800", True), ("240100", True), ("250100", True), ("250200", True),
+    ("245600", True), ("220100", False), ("230100", False), ("040000", False),
+    ("130000", False), ("150300", False), ("160300", False), ("990100", False),
+    (" 241800 ", True), ("\t250200 ", True), (" 040000 ", False),
+    ("0241800", False), ("NE_0001", False), ("NE_0002", False), ("", False),
+    (None, False),
+])
+def test_prefijos_compartidos_entre_filtro_auditoria_y_preparacion(identificador, incluido):
+    # El nombre hospitalario no puede rescatar un ID de otra familia.
+    df = pd.DataFrame([fila(ID_HOSPITALIZACION=identificador,
+                            HOSPITALIZACION="HOSPITALIZACIÓN Y CUIDADOS INTENSIVOS",
+                            NRO_TOTAL_CAMAS="0")], index=[17])
+    original = df.copy(deep=True)
+    mascara = mascara_hospitalizacion_valida(df)
+    assert mascara.index.tolist() == [17]
+    assert mascara.tolist() == [incluido]
+    auditoria = auditar_dataframe(df)
+    q05 = auditoria.hallazgos.query("regla == 'Q05'")
+    assert len(q05) == 1  # Fuera de alcance se sigue auditando.
+    assert q05.en_alcance_modelo.tolist() == [incluido]
+    assert auditoria.resumen["filas_en_alcance_modelo"] == int(incluido)
+    limpio = preparacion.limpiar_registros(df)
+    assert len(limpio) == int(incluido)
+    if incluido:
+        assert limpio.iloc[0].ID_HOSPITALIZACION == identificador.strip()
+    pd.testing.assert_frame_equal(df, original)
+
+
+@pytest.mark.parametrize("identificador", ["241800", "250100", "245600"])
+@pytest.mark.parametrize("nombre", ["hospitalización", "HOSPITALIZACION",
+                                     "UCI / texto distinto", "CONSULTA EXTERNA", "  ", None])
+def test_id_admitido_no_depende_del_nombre(identificador, nombre):
+    df = pd.DataFrame([fila(ID_HOSPITALIZACION=identificador, HOSPITALIZACION=nombre,
+                            NRO_TOTAL_CAMAS="0")])
+    assert mascara_hospitalizacion_valida(df).tolist() == [True]
+    assert len(preparacion.limpiar_registros(df)) == 1
+    assert auditar_dataframe(df).resumen["filas_en_alcance_modelo"] == 1

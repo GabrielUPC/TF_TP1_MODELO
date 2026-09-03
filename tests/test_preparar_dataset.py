@@ -244,3 +244,40 @@ def test_pipeline_metadata_documenta_etiqueta_observada_sin_percentiles(tmp_path
     assert definicion["codificacion"] == {"bajo": 0, "medio": 1, "alto": 2}
     assert not definicion["usa_ratio_camas_disponibles"]
     assert not definicion["usa_percentiles_presion_ingresos_camas"]
+
+
+def test_pipeline_solo_servicios_24_25_sin_contaminar_grupo_con_q08_externo(tmp_path, monkeypatch):
+    from src import preparar_dataset as prep
+    raw, quality, processed = [tmp_path/n for n in ("raw", "quality", "processed")]
+    raw.mkdir()
+    for nombre, valor in {"RAW_DATA_DIR": raw, "QUALITY_DIR": quality,
+                          "PROCESSED_DIR": processed, "OUTPUT_PATH": processed/"dataset.csv",
+                          "DATASET_METADATA_PATH": processed/"metadata.json"}.items():
+        monkeypatch.setattr(prep, nombre, valor)
+    filas = []
+    for identificador, nombre in [(" 241800 ", "HOSPITALIZACION GENERAL"),
+                                  ("250100", "CUIDADOS INTENSIVOS"),
+                                  ("245600", "HOSPITALIZACIÓN DE DÍA"),
+                                  ("040000", "CENTRO QUIRURGICO")]:
+        for mes in (1, 2, 3):
+            filas.append(pd.DataFrame(COLUMNAS_BASE).assign(MES=str(mes),
+                         ID_HOSPITALIZACION=identificador, HOSPITALIZACION=nombre))
+    # Coincide en IPRESS, nombre y mes con una fila admitida, pero el ID 22
+    # queda fuera: su Q08 debe auditarse sin retirar el grupo de hospitalización.
+    filas.append(pd.DataFrame(COLUMNAS_BASE).assign(MES="2", ID_HOSPITALIZACION="220100",
+                 NRO_TOTAL_PACIENTES_CAMAS="1000"))
+    fuente = raw/"servicios.csv"
+    pd.concat(filas, ignore_index=True).to_csv(fuente, index=False)
+    antes = fuente.read_bytes()
+    assert "040000" in prep.leer_csv(fuente).ID_HOSPITALIZACION.tolist()
+    resultado = prep.preparar_dataset()
+    assert fuente.read_bytes() == antes
+    assert set(resultado.id_hospitalizacion) == {"241800", "250100", "245600"}
+    assert len(resultado) == 6
+    assert set(resultado.periodo_actual) == {"2020-01", "2020-02"}
+    hallazgos = pd.read_csv(quality/"hallazgos_calidad.csv")
+    q08 = hallazgos.query("regla == 'Q08'")
+    assert len(q08) == 1 and not q08.en_alcance_modelo.any()
+    assert pd.read_csv(quality/"meses_pendientes_capacidad.csv").empty
+    reporte = json.loads((quality/"resumen_calidad.json").read_text(encoding="utf-8"))
+    assert "prefijo 24 o 25" in reporte["criterios"]["alcance_modelo"]

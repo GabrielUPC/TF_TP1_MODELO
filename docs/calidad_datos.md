@@ -47,15 +47,20 @@ trabajar con datos artificiales; la salida no puede estar dentro del RAW.
 
 `datos_raw.py` reúne las funciones y constantes antes incluidas en
 `preparar_dataset.py`. Este último las reexporta para mantener sus contratos.
-Se conservan aliases, columnas, sectores públicos y criterios de hospitalización.
+Se conservan aliases, columnas y sectores públicos; el alcance de servicios se
+centraliza por los prefijos 24/25 de ID_HOSPITALIZACION.
 La auditoría lee con `conservar_originales=True` para no convertir literales como
 `NA`, `null` o vacíos en valores distintos. La preparación conserva la lectura
 heredada. No se duplican los lectores ni los filtros de alcance.
 
 Se inspeccionan todos los CSV no temporales de `data/raw`, de todas las regiones
 y sectores. `en_alcance_modelo` distingue Lima/Lima, sectores públicos admitidos,
-servicio no vacío e identificador distinto de NE_0001/NE_0002. Se normalizan textos
-en memoria para comparar; los archivos fuente permanecen intactos.
+e ID_HOSPITALIZACION cuyo texto, tras quitar espacios extremos, comienza con
+24 (hospitalización) o 25 (cuidados críticos). Se conserva 245600, hospitalización
+de día. El nombre, sus tildes o su ausencia no incluyen ni excluyen un ID; las
+familias 22, 23, 04, 13, 15, 16 y cualquier otra quedan fuera. Se mantienen ceros
+iniciales: 0241800 no se transforma en 241800. Auditoría y preparación usan la
+misma función. Se normaliza en memoria; los archivos fuente permanecen intactos.
 
 ## Reglas
 

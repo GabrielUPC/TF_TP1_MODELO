@@ -21,6 +21,23 @@ El alcance actual usa la Tabla D1 de hospitalización y camas. No incorpora
 todavía tablas A, J ni H; esas fuentes quedan como ampliaciones futuras para
 enriquecer contexto, no para cambiar el contrato principal ya integrado.
 
+En la preparación del modelo, el alcance de servicios se determina únicamente
+por `ID_HOSPITALIZACION` como texto, sin espacios extremos: prefijo `24`
+(hospitalización) o `25` (cuidados críticos). Se incluye `245600`, hospitalización
+de día. Se excluyen las demás familias, incluidas consulta externa (`22`),
+emergencia (`23`), centro quirúrgico (`04`), rehabilitación (`13`), laboratorio
+(`15`) y procedimientos (`16`). Se conservan ceros iniciales; no se convierte
+el ID a número. El nombre del servicio no decide la inclusión.
+
+La auditoría reutiliza ese mismo filtro para `en_alcance_modelo`, además de los
+filtros existentes de Lima/Lima y sector público. Sigue auditando los registros
+fuera de alcance, pero sus hallazgos no apartan grupos del modelo. Antes solo
+se exigía nombre no vacío y un ID diferente de `NE_0001/NE_0002`.
+
+Este cambio no regenera datasets ni modifica FastAPI, backend o frontend; no
+supone que los filtros de carga de la plataforma ya estén sincronizados. Los
+datos procesados existentes deberán prepararse otra vez para reflejar el alcance.
+
 La unidad de análisis es mensual:
 
 ```text

@@ -7,7 +7,7 @@ import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
-SERVICIOS_EXCLUIDOS = {"NE_0001", "NE_0002"}
+PREFIJOS_SERVICIOS_MODELO = ("24", "25")
 
 SECTORES_PUBLICOS = {
     "MINSA",
@@ -186,4 +186,10 @@ def mascara_ipress_publicas_lima(df: pd.DataFrame) -> pd.Series:
 
 
 def mascara_hospitalizacion_valida(df: pd.DataFrame) -> pd.Series:
-    return df["HOSPITALIZACION"].ne("") & ~df["ID_HOSPITALIZACION"].isin(SERVICIOS_EXCLUIDOS)
+    """Incluye hospitalización (24) y cuidados críticos (25) por ID.
+
+    El ID se compara como texto, sin conversión numérica ni pérdida de ceros.
+    El nombre del servicio no determina el alcance; incluye 245600 (de día).
+    """
+    ids = df["ID_HOSPITALIZACION"].astype("string").str.strip()
+    return ids.str.startswith(PREFIJOS_SERVICIOS_MODELO, na=False)
