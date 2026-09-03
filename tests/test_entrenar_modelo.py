@@ -7,6 +7,7 @@ from src.entrenar_modelo import (
     COLUMNAS_EXCLUIDAS,
     COLUMNAS_PREDICTORAS,
     METADATA_PATH,
+    MARGEN_F1_BASELINE,
     evaluar_baselines,
     seleccionar_anio_prueba,
 )
@@ -68,3 +69,17 @@ def test_metadata_guardada_contiene_trazabilidad_del_modelo() -> None:
         "nivel_riesgo_siguiente_mes_codificado"
     )
     assert isinstance(metadata["supera_baseline"], bool)
+    if metadata.get("es_modelo_final_produccion"):
+        comparacion = metadata["comparacion_baselines_vigente"]
+        assert comparacion["motivo"]
+        assert comparacion["anios"] == [2018, 2021, 2022, 2023, 2024]
+        assert comparacion["margen_f1_requerido"] == MARGEN_F1_BASELINE
+        if comparacion["evidencia_verificada"]:
+            esperado = (
+                comparacion["f1_macro_regla_final_promedio"]
+                > comparacion["mejor_f1_macro_baseline_promedio"]
+                + comparacion["margen_f1_requerido"]
+            )
+            assert metadata["supera_baseline"] is esperado
+        else:
+            assert metadata["supera_baseline"] is False

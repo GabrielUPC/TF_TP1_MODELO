@@ -6,9 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.indicadores import agregar_indicadores_registro
 from src.predecir import obtener_metadata_publica, predecir_riesgo
+from src.modelo_final import preparar_entrada_d, SIGNIFICADO_PROBABILIDAD, SIGNIFICADO_INDICE
 from src.variables_temporales import (
     periodo_siguiente,
-    preparar_registro_con_historial,
 )
 
 
@@ -17,8 +17,9 @@ MENSAJE_REFERENCIAL = (
     "reemplaza decisiones clínicas."
 )
 ADVERTENCIA_HISTORIAL_INCOMPLETO = (
-    "No se recibió historial completo de los dos meses previos; algunas "
-    "variables temporales fueron estimadas con información limitada."
+    "Historial D limitado: se necesitan cinco meses previos consecutivos para "
+    "las ventanas de seis meses; una racha Alto puede requerir más historia. "
+    "Las variables D sin ventana completa permanecen ausentes, sin imputación."
 )
 
 app = FastAPI(
@@ -73,7 +74,6 @@ class SolicitudPrediccion(BaseModel):
     registro_actual: DatosHospitalarios
     historial_ultimos_meses: list[DatosHospitalarios] = Field(
         default_factory=list,
-        max_length=12,
     )
 
 
@@ -88,8 +88,8 @@ class ResultadoPrediccion(BaseModel):
     horizonte_prediccion: str
     nivel_riesgo_predicho: str
     nivel_riesgo_codificado: int
-    probabilidad: float
-    riesgo_insuficiencia_capacidad: float
+    probabilidad: float = Field(description=SIGNIFICADO_PROBABILIDAD)
+    riesgo_insuficiencia_capacidad: float = Field(description=SIGNIFICADO_INDICE)
     probabilidades_por_clase: dict[str, float]
     variables_principales: list[VariablePrincipal]
     color_semaforo: str
@@ -147,7 +147,7 @@ def predict(solicitud: SolicitudPrediccion) -> dict[str, Any]:
             agregar_indicadores_registro(registro.model_dump())
             for registro in solicitud.historial_ultimos_meses
         ]
-        fila_actual, historial_completo = preparar_registro_con_historial(
+        fila_actual, historial_completo = preparar_entrada_d(
             actual,
             historial,
         )

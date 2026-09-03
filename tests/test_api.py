@@ -137,7 +137,7 @@ def test_predict_devuelve_periodo_siguiente_y_calcula_indicadores(
     cuerpo = respuesta.json()
     assert cuerpo["periodo_actual"] == "2024-03"
     assert cuerpo["periodo_predicho"] == "2024-04"
-    assert cuerpo["advertencia_historial"] is None
+    assert cuerpo["advertencia_historial"]  # D requiere cinco meses previos, no dos.
     assert cuerpo["color_semaforo"] == "amarillo"
     assert cuerpo["factores_explicativos"]
     assert cuerpo["causa_principal_riesgo"] == "Demanda supera egresos"
@@ -146,6 +146,8 @@ def test_predict_devuelve_periodo_siguiente_y_calcula_indicadores(
     assert "referencial" in cuerpo["recomendacion_riesgo"]
     assert registro_recibido["dias_mes"] == 31
     assert "promedio_movil_3m_ingresos" in registro_recibido
+    assert "ocupacion_lag_3m" in registro_recibido
+    assert "meses_alto_ultimos_6m" in registro_recibido
     assert registro_recibido["presion_ingresos_camas"] == pytest.approx(0.83)
 
 

@@ -300,7 +300,26 @@ Usa folds anteriores a 2025 para seleccionar entre 15 configuraciones y reserva
 `python -m src.optimizar_xgboost --solo-plan` muestra y guarda el plan sin ajustar
 modelos. Véase [espacio, pesos, rankings y protección del holdout](docs/optimizar_xgboost.md).
 
-## Entrenamiento
+## Entrenamiento final congelado: XGBoost D
+
+El flujo productivo usa **69 features D** y la regla `combinada_0.35_0.20`.
+No ejecuta comparaciones nuevas ni vuelve a evaluar 2025. Primero puede revisarse
+el plan sin escribir; después se realiza un único ajuste final:
+
+```powershell
+python -m src.entrenar_modelo_final --solo-plan
+python -m src.entrenar_modelo_final
+```
+
+Solo el segundo comando, si termina correctamente, reemplaza
+`models/modelo_ipress.joblib` y `models/model_metadata.json`. Reiniciar FastAPI
+después para limpiar sus caches. La API rechaza artefactos antiguos o una pareja
+modelo/metadata inconsistente. Véase [contrato final y límites](docs/modelo_final.md).
+
+### Entrenamiento anterior (referencia histórica; no ejecutar para producción D)
+
+El procedimiento siguiente describe el flujo anterior; puede reemplazar informes
+y NO implementa el contrato productivo D congelado. Se conserva como referencia.
 
 ```powershell
 py src/entrenar_modelo.py
@@ -391,9 +410,10 @@ uvicorn src.main:app --reload
 
 ### POST /predict
 
-La API recibe los datos base del mes actual y hasta doce registros históricos
-opcionales. Para los promedios de tres meses son suficientes los dos meses
-anteriores.
+La API recibe los datos base del mes actual e historial opcional del mismo
+IPRESS/servicio. D requiere cinco meses previos consecutivos para ventanas de
+seis meses; la racha Alto puede requerir más historia. Se permite aportar más
+de doce meses sin cambiar los campos de la solicitud.
 
 ```json
 {
@@ -422,8 +442,14 @@ anteriores.
 ```
 
 La API calcula internamente indicadores, estacionalidad, promedios móviles y
-tendencias. Si no recibe los dos meses previos, utiliza la información
-disponible y devuelve `advertencia_historial`.
+tendencias y las mismas features D del experimento. Las ventanas D incompletas
+permanecen ausentes, sin imputación; se devuelve `advertencia_historial` si falta
+historia o la racha Alto podría estar truncada.
+
+`probabilidad` corresponde a la **clase final** después de aplicar la regla,
+no necesariamente a la probabilidad máxima. Las probabilidades por clase no
+se recalibran ni modifican. `riesgo_insuficiencia_capacidad` se conserva por
+compatibilidad como índice visual derivado, **no como probabilidad calibrada**.
 
 La respuesta incluye periodo actual, periodo predicho, riesgo, semáforo,
 probabilidad por clase, variables principales, factores explicativos,

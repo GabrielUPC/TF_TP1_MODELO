@@ -12,6 +12,11 @@ from src.interpretacion import (
     interpretar_semaforo,
 )
 from src.soporte_decision import generar_soporte_decision
+from src.modelo_final import (
+    REGLA_FINAL, SIGNIFICADO_PROBABILIDAD, SIGNIFICADO_INDICE,
+    probabilidades_ordenadas, decidir_clases,
+)
+from src.tratamiento_capacidad import sha256_archivo
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -27,12 +32,12 @@ def cargar_artefactos() -> tuple[Any, dict[str, str]]:
     if not MODEL_PATH.is_file():
         raise FileNotFoundError(
             f"No se encontró el modelo en {MODEL_PATH}. "
-            "Ejecute primero: py src/entrenar_modelo.py"
+            "Ejecute primero: python -m src.entrenar_modelo_final"
         )
     if not CLASES_PATH.is_file():
         raise FileNotFoundError(
             f"No se encontró el archivo de clases en {CLASES_PATH}. "
-            "Ejecute primero: py src/entrenar_modelo.py"
+            "Ejecute primero: python -m src.entrenar_modelo_final"
         )
     try:
         modelo = joblib.load(MODEL_PATH)
@@ -47,6 +52,18 @@ def cargar_artefactos() -> tuple[Any, dict[str, str]]:
             "El archivo de clases no contiene el mapeo esperado: "
             '{"0": "bajo", "1": "medio", "2": "alto"}.'
         )
+    metadata = cargar_metadata()
+    if (metadata.get("es_modelo_final_produccion") is not True
+            or metadata.get("regla_decision") != REGLA_FINAL
+            or getattr(modelo, "regla_decision_", None) != REGLA_FINAL
+            or metadata.get("algoritmo_final") != "XGBoost"
+            or metadata.get("conjunto_features") != "D"
+            or metadata.get("modelo_sha256") != sha256_archivo(MODEL_PATH)
+            or metadata.get("lista_features") != obtener_columnas_requeridas(modelo)):
+        raise RuntimeError(
+            "Modelo y metadata no corresponden al contrato final XGBoost D. "
+            "Ejecute python -m src.entrenar_modelo_final y reinicie la API."
+        )
     return modelo, clases
 
 
@@ -55,7 +72,7 @@ def cargar_metadata() -> dict[str, Any]:
     if not METADATA_PATH.is_file():
         raise FileNotFoundError(
             f"No se encontró la metadata en {METADATA_PATH}. "
-            "Ejecute primero: py src/entrenar_modelo.py"
+            "Ejecute primero: python -m src.entrenar_modelo_final"
         )
     try:
         return json.loads(METADATA_PATH.read_text(encoding="utf-8"))
@@ -65,6 +82,11 @@ def cargar_metadata() -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def cargar_importancia() -> pd.DataFrame:
+    metadata = cargar_metadata()
+    if metadata.get("es_modelo_final_produccion"):
+        # No presentar la importancia del CSV productivo antiguo como vigente.
+        return pd.DataFrame(metadata.get("importancia_variables_final", []),
+                            columns=["variable", "importancia"])
     if not IMPORTANCIA_PATH.is_file():
         return pd.DataFrame(columns=["variable", "importancia"])
     try:
@@ -124,6 +146,10 @@ def calcular_riesgo_insuficiencia_capacidad(
     nivel: str,
     confianza: float,
 ) -> float:
+    """Índice visual legado, NO probabilidad calibrada; conservado por contrato API.
+
+    No interviene en decidir la clase ni en las métricas del modelo.
+    """
     confianza = max(0.0, min(float(confianza), 1.0))
     nivel_normalizado = nivel.lower()
 
@@ -157,7 +183,8 @@ def predecir_riesgo(datos: dict[str, Any]) -> dict[str, Any]:
         [{columna: datos[columna] for columna in columnas_requeridas}]
     )
     try:
-        codigo = int(modelo.predict(entrada)[0])
+        probabilidades = probabilidades_ordenadas(modelo, entrada)
+        codigo = int(decidir_clases(probabilidades)[0])
         nivel = clases.get(str(codigo))
         if nivel is None:
             raise ValueError(
@@ -165,16 +192,10 @@ def predecir_riesgo(datos: dict[str, Any]) -> dict[str, Any]:
             )
 
         probabilidades_por_clase = {
-            nombre: 0.0 for nombre in clases.values()
+            clases[str(c)]: float(probabilidades[0, c]) for c in (0, 1, 2)
         }
-        probabilidad = 0.0
-        if hasattr(modelo, "predict_proba"):
-            probabilidades = modelo.predict_proba(entrada)[0]
-            clases_modelo = getattr(modelo, "classes_", range(len(probabilidades)))
-            for clase, valor in zip(clases_modelo, probabilidades):
-                nombre_clase = clases.get(str(int(clase)), str(clase))
-                probabilidades_por_clase[nombre_clase] = float(valor)
-            probabilidad = float(max(probabilidades))
+        # La regla puede apartarse de argmax: devolver p de la clase FINAL.
+        probabilidad = float(probabilidades[0, codigo])
 
         semaforo = interpretar_semaforo(nivel)
         soporte = generar_soporte_decision(datos, nivel, probabilidad)
@@ -216,6 +237,16 @@ def obtener_metadata_publica() -> dict[str, Any]:
     metadata = cargar_metadata()
     metricas_temporales = metadata.get("metricas_temporales", {})
     return {
+        "algoritmo_final": metadata.get("algoritmo_final"),
+        "conjunto_features": metadata.get("conjunto_features"),
+        "numero_features": metadata.get("numero_features"),
+        "regla_decision": metadata.get("regla_decision"),
+        "es_modelo_final_produccion": metadata.get("es_modelo_final_produccion", False),
+        "definicion_probabilidad": SIGNIFICADO_PROBABILIDAD,
+        "definicion_riesgo_insuficiencia_capacidad": SIGNIFICADO_INDICE,
+        "resultados_desarrollo": metadata.get("resultados_desarrollo"),
+        "resultados_comprobacion_2025": metadata.get("resultados_comprobacion_2025"),
+        "advertencia_2025": metadata.get("advertencia_2025"),
         "tipo_modelo": metadata.get("tipo_modelo"),
         "horizonte_prediccion": metadata.get("horizonte_prediccion"),
         "mejor_modelo": metadata.get("mejor_modelo"),
