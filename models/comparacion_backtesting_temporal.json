@@ -1,0 +1,52 @@
+{
+  "orden_criterios": [
+    "f1_macro_promedio",
+    "balanced_accuracy_promedio",
+    "recall_alto_promedio",
+    "tasa_falsos_negativos_alto_promedio"
+  ],
+  "sentido": [
+    "max",
+    "max",
+    "max",
+    "min"
+  ],
+  "mejores_incluidos_baselines": [
+    "XGBoost"
+  ],
+  "mejores_modelos": [
+    "XGBoost"
+  ],
+  "anios_elegibles": [
+    2018,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "min_meses_historial": 24,
+  "min_casos_clase": 2,
+  "xgboost_disponible": true,
+  "modelo_produccion_modificado": false,
+  "dataset_sha256": "e0e099bfd10a6a9f3b2e296c5608e85faf8b58f1bf5a86fe426f5e3421399e82",
+  "definicion_target": {
+    "version": "riesgo_ocupacion_observada_v2",
+    "indicador": "ocupacion_estimada",
+    "formula": "total_pacientes_camas / total_camas_disponibles",
+    "unidad": "pacientes-día / días-cama disponibles",
+    "nivel_riesgo_actual": {
+      "bajo": "ocupacion_estimada < 0.70",
+      "medio": "0.70 <= ocupacion_estimada < 0.85",
+      "alto": "ocupacion_estimada >= 0.85"
+    },
+    "codificacion": {
+      "bajo": 0,
+      "medio": 1,
+      "alto": 2
+    },
+    "nivel_riesgo_siguiente_mes": "nivel_riesgo_actual del mes calendario t+1 de la misma IPRESS y servicio",
+    "usa_ratio_camas_disponibles": false,
+    "usa_percentiles_presion_ingresos_camas": false
+  }
+}
