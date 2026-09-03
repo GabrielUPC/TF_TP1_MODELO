@@ -72,12 +72,12 @@ def test_descarta_fold_sin_tres_clases_controladamente():
     assert 'cada clase' in plan.loc[plan.anio_prueba == 2020, 'motivo'].item()
 
 
-def test_no_admite_anio_incompleto_ni_huecos_en_historial_minimo():
+def test_no_admite_anio_incompleto_pero_hueco_historico_no_invalida_fold():
     df = datos().query("periodo_predicho != '2021-05'")
     folds, plan = bt.crear_folds_expansivos(df)
-    assert [a for a, _, _ in folds] == [2020]
+    assert [a for a, _, _ in folds] == [2020, 2022]
     assert 'incompleto' in plan.loc[plan.anio_prueba == 2021, 'motivo'].item()
-    assert 'meses previos' in plan.loc[plan.anio_prueba == 2022, 'motivo'].item()
+    assert plan.loc[plan.anio_prueba == 2022, 'elegible'].item()
 
 
 @pytest.mark.parametrize('caso', ['t_mas_2', 'indice', 'duplicado', 'clase'])
@@ -196,3 +196,28 @@ def test_resumen_no_compara_tests_diferentes():
     with pytest.raises(ValueError, match='mismo test'):
         bt.resumir_backtesting(metricas)
 
+
+
+@pytest.mark.parametrize('meses_historial,elegible', [(23, False), (24, True), (25, True)])
+def test_minimo_cuenta_meses_distintos_anteriores_aunque_haya_huecos(meses_historial, elegible):
+    df = datos()
+    periodos = pd.period_range('2018-01', '2020-12', freq='M').astype(str).tolist()
+    periodos.remove('2018-06')  # Hueco intermedio; cada mes conserva las tres clases.
+    seleccionados = periodos[:meses_historial]
+    df = df.loc[df.periodo_predicho.isin(seleccionados) | df.periodo_predicho.ge('2021-01')]
+    df = df.sample(frac=1, random_state=42)  # La selección no depende del orden de filas.
+    folds, plan = bt.crear_folds_expansivos(df, min_meses_historial=24)
+    fila = plan.loc[plan.anio_prueba == 2021].iloc[0]
+    assert fila.meses_train == meses_historial
+    assert fila.n_train == meses_historial*3  # Contar filas no puede sustituir contar meses.
+    assert bool(fila.elegible) == elegible
+    assert (2021 in [anio for anio, _, _ in folds]) == elegible
+    if elegible:
+        _, train, test = next(fold for fold in folds if fold[0] == 2021)
+        assert set(df.loc[train, 'periodo_predicho']) == set(seleccionados)
+        assert df.loc[train, 'periodo_predicho'].lt('2021-01').all()
+        assert set(df.loc[test, 'periodo_predicho']) == {f'2021-{mes:02d}' for mes in range(1, 13)}
+        assert set(train).isdisjoint(test)
+        assert not set(df.index[df.periodo_predicho.ge('2022-01')]) & set(train)
+    else:
+        assert '24 periodos mensuales distintos anteriores' in fila.motivo

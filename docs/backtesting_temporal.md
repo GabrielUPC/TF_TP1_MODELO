@@ -11,8 +11,13 @@ La partición usa **periodo_predicho**, no el año de las features:
 train = todos los periodos objetivo anteriores al año; test = únicamente ese año.
 Un año completo requiere presencia de enero a diciembre en el conjunto de test,
 no doce registros por cada IPRESS. No se eliminan registros de test según la clase.
-Por defecto se requieren los 24 meses objetivo inmediatamente anteriores al año,
-sin huecos globales, y al menos dos ejemplos de cada clase en entrenamiento.
+Por defecto se requieren al menos 24 periodos mensuales objetivo distintos
+anteriores al año de prueba, y al menos dos ejemplos de cada clase en entrenamiento.
+No se exige que esos meses sean consecutivos ni inmediatamente anteriores al test.
+Los huecos globales por calidad no invalidan por sí solos un fold: cada observación
+mantiene su continuidad t -> t+1 y las variables temporales controlan sus grupos.
+`meses_train` cuenta meses distintos, no filas; `train_desde` y `train_hasta`
+documentan el intervalo histórico disponible.
 Son criterios mínimos configurables, no una garantía de suficiencia estadística.
 El plan registra años aceptados y descartados, motivos, tamaños y clases de train.
 Se rechazan periodos que no correspondan exactamente a t+1, índices duplicados y
@@ -101,11 +106,11 @@ existente sigue siendo secundario y no participa en esta comparación.
 ## Verificación local y resultados pendientes
 
 Con el dataset inspeccionado (45.318 filas), los años elegibles por defecto son
-2018, 2023, 2024 y 2025. El plan guardado detalla los descartes: 2015/2026 y
-2019/2020 no tienen los doce meses objetivo; 2016/2017 aún no reúnen historial
-suficiente; los huecos objetivo previos excluyen 2021/2022 bajo el mínimo
-conservador de 24 meses consecutivos. No se rellenaron periodos ni se cambió
-la preparación para ampliar el número de folds.
+2018, 2021, 2022, 2023, 2024 y 2025. El plan guardado detalla los descartes:
+2015/2026 y 2019/2020 no tienen los doce meses objetivo; 2016/2017 aún no reúnen
+24 meses históricos distintos. Los años 2021 y 2022 son elegibles con 69 y 81
+meses históricos, respectivamente, aunque haya huecos. No se rellenaron periodos
+ni se cambió la preparación: se corrigió únicamente el criterio de elegibilidad.
 
 Se probaron particiones, invariancia frente al futuro, métricas, orden de
 probabilidades, comparación y exportación con datos artificiales y modelos de

@@ -1,12 +1,12 @@
 anio_prueba,elegible,motivo,n_train,n_test,meses_train,meses_test,train_desde,train_hasta,train_clase_0,train_clase_1,train_clase_2
-2015,False,Año objetivo incompleto; Faltan 24 meses previos consecutivos; Se requieren al menos 2 casos de cada clase en train,0,1555,0,11,,,0,0,0
-2016,False,Faltan 24 meses previos consecutivos,1555,3731,11,12,2015-02,2015-12,395,384,776
-2017,False,Faltan 24 meses previos consecutivos,5286,4177,23,12,2015-02,2016-12,1449,1307,2530
+2015,False,Año objetivo incompleto; Se requieren al menos 24 periodos mensuales distintos anteriores; Se requieren al menos 2 casos de cada clase en train,0,1555,0,11,,,0,0,0
+2016,False,Se requieren al menos 24 periodos mensuales distintos anteriores,1555,3731,11,12,2015-02,2015-12,395,384,776
+2017,False,Se requieren al menos 24 periodos mensuales distintos anteriores,5286,4177,23,12,2015-02,2016-12,1449,1307,2530
 2018,True,Cumple criterios,9463,4292,35,12,2015-02,2017-12,2620,2341,4502
 2019,False,Año objetivo incompleto,13755,4088,47,11,2015-02,2018-12,3807,3357,6591
-2020,False,Año objetivo incompleto; Faltan 24 meses previos consecutivos,17843,3605,58,11,2015-02,2019-12,4959,4346,8538
-2021,False,Faltan 24 meses previos consecutivos,21448,3996,69,12,2015-02,2020-12,6831,5000,9617
-2022,False,Faltan 24 meses previos consecutivos,25444,4397,81,12,2015-02,2021-12,8498,5750,11196
+2020,False,Año objetivo incompleto,17843,3605,58,11,2015-02,2019-12,4959,4346,8538
+2021,True,Cumple criterios,21448,3996,69,12,2015-02,2020-12,6831,5000,9617
+2022,True,Cumple criterios,25444,4397,81,12,2015-02,2021-12,8498,5750,11196
 2023,True,Cumple criterios,29841,4595,93,12,2015-02,2022-12,10133,6613,13095
 2024,True,Cumple criterios,34436,4606,105,12,2015-02,2023-12,11521,7630,15285
 2025,True,Cumple criterios,39042,4942,117,12,2015-02,2024-12,12850,8692,17500

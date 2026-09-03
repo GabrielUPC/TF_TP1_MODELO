@@ -42,7 +42,11 @@ def validar_periodos(df):
 
 
 def planificar_folds(df, min_meses_historial=24, min_casos_clase=2):
-    """Año completo = 12 meses objetivo presentes en el conjunto, no por IPRESS."""
+    """Año completo = 12 meses objetivo presentes en el conjunto, no por IPRESS.
+
+    El historial cuenta periodos objetivo distintos anteriores al año de test;
+    los huecos globales no invalidan un fold con suficiente historial.
+    """
     if min_meses_historial < 1 or min_casos_clase < 1:
         raise ValueError("Los mínimos deben ser positivos.")
     _, periodos = validar_periodos(df)
@@ -50,13 +54,12 @@ def planificar_folds(df, min_meses_historial=24, min_casos_clase=2):
     for anio in sorted(set(periodos.year)):
         train, test = periodos.year < anio, periodos.year == anio
         meses_train = set(periodos[train])
-        requeridos = set(pd.period_range(end=f"{anio-1}-12", periods=min_meses_historial, freq="M"))
         conteos = df.loc[train, OBJETIVO].value_counts()
         motivos = []
         if set(periodos[test].month) != set(range(1, 13)):
             motivos.append("Año objetivo incompleto")
-        if not requeridos.issubset(meses_train):
-            motivos.append(f"Faltan {min_meses_historial} meses previos consecutivos")
+        if len(meses_train) < min_meses_historial:
+            motivos.append(f"Se requieren al menos {min_meses_historial} periodos mensuales distintos anteriores")
         if any(conteos.get(c, 0) < min_casos_clase for c in (0, 1, 2)):
             motivos.append(f"Se requieren al menos {min_casos_clase} casos de cada clase en train")
         filas.append({"anio_prueba": int(anio), "elegible": not motivos,
