@@ -283,6 +283,15 @@ no equivalen a camas libres y requieren una revisión separada. Los datasets
 procesados y modelos ya guardados no se regeneran automáticamente: un modelo
 entrenado con la ocupación anterior no queda validado para la fórmula nueva.
 
+## Backtesting temporal multianual
+
+La evaluación multianual independiente está en `src/backtesting_temporal.py`.
+`python -m src.backtesting_temporal --solo-plan` documenta años elegibles sin
+ajustar modelos. Sin `--solo-plan`, ajusta modelos de evaluación por fold y
+genera los CSV de métricas/resumen en `models/`, sin guardar el modelo final.
+La evaluación principal es temporal; el test aleatorio no decide esta comparación.
+Véase [metodología, métricas y límites](docs/backtesting_temporal.md).
+
 ## Entrenamiento
 
 ```powershell

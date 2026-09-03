@@ -1,7 +1,7 @@
 {
   "tratamiento_capacidad": {
     "version": "capacidad_q05_q06_q07_q08_v3",
-    "generado_utc": "2026-09-03T01:29:12.600680+00:00",
+    "generado_utc": "2026-09-03T01:55:53.766948+00:00",
     "raw_sha256": {
       "ConsultaD1_2024_v22.csv": "dcdb9c0f8c81c95db378e0e5952de45d090c0a1a149d79b3dac635c1b13975bb",
       "ConsultaD1_2025_v20.csv": "142c6f98beaf82b0ab6b18f0be6152f15d242bf882c6e8cdffacfbde3767f10d",
@@ -16,7 +16,7 @@
       "ConsultaD1_Hospitalizaciones_Especialidad_2022_v24.csv": "10d80dd6e886446d471bfbdbc45e0a8a032717e12a0fdac8b6d71cd417c0d124",
       "ConsultaD1_Hospitalizaciones_Especialidad_2023_v24.csv": "a1e8e931161b8a9a14583918c417e81de91031f7497b5b7fa5d30ef6145b427e"
     },
-    "auditoria_sha256": "cae5a870115c76a73718acbcb591f2863842a2ab52eb870706bc71368c76ab52",
+    "auditoria_sha256": "c4cfc3e56ddf0061a99cc643df008701c089e808ac526c28278345577f48bc6f",
     "reglas_aplicadas": [
       "Q05",
       "Q06",
@@ -24,10 +24,10 @@
       "Q08"
     ],
     "criterio": "Apartar mes completo por IPRESS y servicio si alguna fila RAW en alcance tiene Q05/Q06/Q07/Q08; no imputar valores.",
-    "filas_raw_pendientes": 662,
-    "meses_servicio_pendientes": 635,
-    "filas_apartadas_antes_consolidacion": 732,
-    "filas_restantes_antes_consolidacion": 51108,
+    "filas_raw_pendientes": 658,
+    "meses_servicio_pendientes": 631,
+    "filas_apartadas_antes_consolidacion": 728,
+    "filas_restantes_antes_consolidacion": 50862,
     "reglas_solo_auditadas": [
       "Q01",
       "Q02",
@@ -36,7 +36,7 @@
       "Q09"
     ]
   },
-  "dataset_sha256": "0fc1ef1642edc83433f50733fe25a0c93dd69849c30e419b0c39490a291c341d",
+  "dataset_sha256": "e0e099bfd10a6a9f3b2e296c5608e85faf8b58f1bf5a86fe426f5e3421399e82",
   "raw_sha256": {
     "ConsultaD1_2024_v22.csv": "dcdb9c0f8c81c95db378e0e5952de45d090c0a1a149d79b3dac635c1b13975bb",
     "ConsultaD1_2025_v20.csv": "142c6f98beaf82b0ab6b18f0be6152f15d242bf882c6e8cdffacfbde3767f10d",
@@ -51,9 +51,9 @@
     "ConsultaD1_Hospitalizaciones_Especialidad_2022_v24.csv": "10d80dd6e886446d471bfbdbc45e0a8a032717e12a0fdac8b6d71cd417c0d124",
     "ConsultaD1_Hospitalizaciones_Especialidad_2023_v24.csv": "a1e8e931161b8a9a14583918c417e81de91031f7497b5b7fa5d30ef6145b427e"
   },
-  "numero_filas_antes_objetivo_futuro": 48597,
-  "numero_filas_entrenamiento": 45473,
-  "filas_eliminadas_sin_mes_siguiente": 3124,
+  "numero_filas_antes_objetivo_futuro": 48363,
+  "numero_filas_entrenamiento": 45318,
+  "filas_eliminadas_sin_mes_siguiente": 3045,
   "anios_disponibles": [
     2015,
     2016,

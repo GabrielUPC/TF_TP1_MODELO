@@ -2,11 +2,11 @@
 ConsultaD1_2024_v22.csv,74131,5070,5070,latin1,;,OK,,True,,43812,28,0,0,284241,0,0,0,0,0,3348,0,0,0,0,0,2,0,124,3,2896,27
 ConsultaD1_2025_v20.csv,88646,5445,5445,latin1,;,OK,,True,,55284,64,0,0,347267,0,0,0,0,0,4666,1,0,0,0,0,3,0,182,14,3612,59
 ConsultaD1_2026_v8.csv,31011,1900,1900,utf-8-sig,;,OK,,True,,19913,25,0,0,127221,0,0,0,0,0,1292,10,0,0,0,0,0,0,75,4,1160,12
-ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv,6272,2336,2336,latin1,",",OK,,True,,417,94,0,0,21,0,0,0,0,0,2,1,30,3,12,0,22,22,239,40,219,64
-ConsultaD1_Hospitalizaciones_Especialidad_2016_v1.csv,24496,4762,4762,latin1,",",OK,,True,,4054,282,0,0,6783,0,0,0,0,0,106,1,366,94,192,8,8,6,957,119,2317,140
-ConsultaD1_Hospitalizaciones_Especialidad_2017_v1.csv,32852,4686,4686,latin1,",",OK,,True,,8344,142,0,0,30788,0,0,0,0,0,204,0,624,25,391,4,2,0,1021,83,2911,51
-ConsultaD1_Hospitalizaciones_Especialidad_2018_v2.csv,54000,4852,4852,latin1,",",OK,,True,,28249,297,0,0,162130,0,0,0,0,0,706,77,828,50,591,47,15,0,1284,142,3593,36
-ConsultaD1_Hospitalizaciones_Especialidad_2019_v7.csv,57170,4673,4673,latin1,",",OK,,True,,31049,80,0,0,190870,0,0,0,0,0,1392,24,578,0,262,0,0,0,755,46,2326,11
+ConsultaD1_Hospitalizaciones_Especialidad_2015_v1.csv,6272,2286,2286,latin1,",",OK,,True,,417,92,0,0,21,0,0,0,0,0,2,1,30,3,12,0,22,20,239,40,219,62
+ConsultaD1_Hospitalizaciones_Especialidad_2016_v1.csv,24496,4673,4673,latin1,",",OK,,True,,4054,282,0,0,6783,0,0,0,0,0,106,1,366,94,192,8,8,6,957,119,2317,140
+ConsultaD1_Hospitalizaciones_Especialidad_2017_v1.csv,32852,4623,4623,latin1,",",OK,,True,,8344,134,0,0,30788,0,0,0,0,0,204,0,624,24,391,4,2,0,1021,83,2911,43
+ConsultaD1_Hospitalizaciones_Especialidad_2018_v2.csv,54000,4816,4816,latin1,",",OK,,True,,28249,296,0,0,162130,0,0,0,0,0,706,77,828,49,591,47,15,0,1284,142,3593,36
+ConsultaD1_Hospitalizaciones_Especialidad_2019_v7.csv,57170,4661,4661,latin1,",",OK,,True,,31049,80,0,0,190870,0,0,0,0,0,1392,24,578,0,262,0,0,0,755,46,2326,11
 ConsultaD1_Hospitalizaciones_Especialidad_2020_v7.csv,58826,4174,4174,latin1,",",OK,,True,,36024,132,0,0,237925,0,0,0,0,0,4119,0,0,0,0,0,0,0,62,2,1920,130
 ConsultaD1_Hospitalizaciones_Especialidad_2021_v18.csv,59283,4452,4452,latin1,",",OK,,True,,33929,149,0,0,219199,0,0,0,0,0,3118,0,0,0,0,0,0,0,159,6,2400,144
 ConsultaD1_Hospitalizaciones_Especialidad_2022_v24.csv,62133,4577,4577,latin1,;,OK,,True,,34771,113,0,0,222800,0,0,0,0,0,2834,0,0,0,0,0,0,0,131,4,2713,109
