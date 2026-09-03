@@ -292,6 +292,14 @@ genera los CSV de métricas/resumen en `models/`, sin guardar el modelo final.
 La evaluación principal es temporal; el test aleatorio no decide esta comparación.
 Véase [metodología, métricas y límites](docs/backtesting_temporal.md).
 
+## Optimización temporal de XGBoost
+
+La búsqueda limitada para la clase Alto está separada en `src/optimizar_xgboost.py`.
+Usa folds anteriores a 2025 para seleccionar entre 15 configuraciones y reserva
+2025 para una evaluación posterior a la elección, sin guardar producción.
+`python -m src.optimizar_xgboost --solo-plan` muestra y guarda el plan sin ajustar
+modelos. Véase [espacio, pesos, rankings y protección del holdout](docs/optimizar_xgboost.md).
+
 ## Entrenamiento
 
 ```powershell
