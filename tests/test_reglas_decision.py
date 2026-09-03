@@ -45,12 +45,13 @@ def motor_falso():
         crear_pipeline=lambda X, alg: Pipeline(), eventos=eventos)
 
 
-def test_espacio_diez_reglas_sin_combinaciones_extra():
+def test_espacio_doce_reglas_sin_combinaciones_extra():
     reglas = rd.reglas_candidatas()
-    assert len(reglas) == len({r['regla'] for r in reglas}) == 10
+    assert len(reglas) == len({r['regla'] for r in reglas}) == 12
     assert reglas[0]['regla'] == rd.BASE
     assert [r['umbral'] for r in reglas if r['tipo_regla'] == 'alto'] == [.25, .30, .35, .40, .45]
     assert [r['umbral'] for r in reglas if r['tipo_regla'] == 'proteccion'] == [.20, .25, .30, .35]
+    assert [(r['umbral'], r['umbral_proteccion']) for r in reglas if r['tipo_regla'] == 'combinada'] == [(.35, .25), (.40, .25)]
 
 
 def test_argmax_empates_y_probabilidades_intactas():
@@ -97,6 +98,9 @@ def resultados():
             metricas = dict.fromkeys(rd.bt.METRICAS, 0.)
             metricas.update(f1_macro=.7, balanced_accuracy=.71, recall_alto=.75,
                             tasa_falsos_negativos_alto=.25, proporcion_alto_bajo=.05)
+            metricas.update({f'predichos_{c}': 10 for c in ['bajo', 'medio', 'alto']})
+            metricas.update({f'proporcion_predicha_{c}': 1/3 for c in ['bajo', 'medio', 'alto']})
+            metricas['riesgo_expansion_alto'] = False
             filas.append(dict(regla=regla['regla'], tipo='regla_decision', anio_prueba=anio,
                               n_test=30, test_sha256=str(anio), probabilidades_sha256=str(anio),
                               fase='desarrollo', **metricas))
@@ -106,10 +110,10 @@ def resultados():
 def test_ranking_prioriza_severos_rechaza_caida_f1_y_prefiere_base_en_empate():
     r = resultados()
     assert rd.seleccionar_regla(r)[1] == rd.BASE
-    # La mayor recuperación de Alto no prima sobre errores severos.
+    # Alto->Bajo prima, incluso si otra regla obtiene menor FNR.
     r.loc[r.regla.eq('alto_0.25'), ['proporcion_alto_bajo', 'recall_alto', 'tasa_falsos_negativos_alto']] = [.03, .95, .05]
     r.loc[r.regla.eq('proteccion_0.25'), 'proporcion_alto_bajo'] = .02
-    r.loc[r.regla.eq('alto_0.30'), ['proporcion_alto_bajo', 'f1_macro']] = [0., .6799]
+    r.loc[r.regla.eq('alto_0.30'), ['proporcion_alto_bajo', 'f1_macro', 'tasa_falsos_negativos_alto', 'recall_alto']] = [0., .6799, .01, .99]
     resumen, elegida = rd.seleccionar_regla(r)
     assert elegida == 'proteccion_0.25'
     assert not resumen.set_index('regla').loc['alto_0.30', 'admisible']
@@ -118,10 +122,17 @@ def test_ranking_prioriza_severos_rechaza_caida_f1_y_prefiere_base_en_empate():
     assert rd.seleccionar_regla(r)[1] == 'alto_0.30'
 
 
-def test_fnr_desempata_con_igual_proporcion_severa():
+def test_fnr_mejora_con_igual_proporcion_severa():
     r = resultados()
     r.loc[r.regla.eq('alto_0.40'), ['tasa_falsos_negativos_alto', 'recall_alto']] = [.2, .8]
     assert rd.seleccionar_regla(r)[1] == 'alto_0.40'
+
+
+def test_severos_desempatan_cuando_fnr_es_igual():
+    r = resultados()
+    r.loc[r.regla.isin(['alto_0.25', 'alto_0.30']), ['tasa_falsos_negativos_alto', 'recall_alto']] = [.2, .8]
+    r.loc[r.regla.eq('alto_0.30'), 'proporcion_alto_bajo'] = .01
+    assert rd.seleccionar_regla(r)[1] == 'alto_0.30'
 
 
 @pytest.mark.parametrize('caso', ['2025', 'sin_argmax', 'otro_test', 'otra_proba', 'duplicado'])
@@ -169,8 +180,8 @@ def test_flujo_un_fit_por_anio_mismas_proba_2025_congelado_y_produccion(tmp_path
         return funcion(motor, algoritmo, datos_fold, train, test, columnas, anio)
     monkeypatch.setattr(rd, 'probabilidades_fold', observar)
     res, resumen, reporte = rd.evaluar_reglas(df, tmp_path, motor=motor)
-    assert len(res) == 52
-    assert len(resumen) == 10
+    assert len(res) == 62
+    assert len(resumen) == 12
     assert reporte['regla_seleccionada']['regla'] == 'alto_0.35'
     assert reporte['es_modelo_final_produccion'] is False
     assert reporte['evaluacion_2025']['n_ajustes_XGBoost_D'] == 1
@@ -190,9 +201,136 @@ def test_flujo_un_fit_por_anio_mismas_proba_2025_congelado_y_produccion(tmp_path
     assert {'reglas_probadas', 'anios_desarrollo', 'criterio_seleccion', 'metricas_promedio',
             'comparacion_argmax', 'evaluacion_2025'}.issubset(j)
     assert j['regla_seleccionada']['regla'] == reporte['regla_seleccionada']['regla']
+    assert len(j['calibracion_por_anio']) == 5
+    assert j['observaciones_calibracion']['calibrador_ajustado'] is False
+    calibracion = pd.read_csv(tmp_path/rd.ARCHIVOS[3])
+    assert len(calibracion) == 150
+    assert set(calibracion.anio_prueba) == set(rd.ANIOS_DESARROLLO)
+    assert {'log_loss', 'brier_multiclase', 'confianza_media_maxima', 'ece_clase', 'n_bin'}.issubset(calibracion)
+    assert res[['predichos_bajo', 'predichos_medio', 'predichos_alto']].sum(axis=1).eq(res.n_test).all()
     assert sentinel.read_bytes() == b'produccion sin cambios'
     assert motor.COLUMNAS_PREDICTORAS == ['ocupacion_estimada']
     pd.testing.assert_frame_equal(df, original)
     with pytest.raises(FileExistsError):
         rd.evaluar_reglas(df, tmp_path, motor=motor)
     assert len(motor.eventos) == 12
+
+
+@pytest.mark.parametrize('umbral', [.35, .40])
+def test_combinadas_prioridad_alto_y_bordes_deterministas(umbral):
+    regla = next(r for r in rd.reglas_candidatas() if r['regla'] == f'combinada_{umbral:.2f}_0.25')
+    p = np.array([[.5, .5-umbral, umbral], [.5, .25, .25], [.6, .2, .2], [.1, .65, .25]])
+    copia = p.copy()
+    np.testing.assert_array_equal(rd.aplicar_regla(p, regla), [2, 1, 0, 1])
+    np.testing.assert_array_equal(rd.aplicar_regla(p, regla), rd.aplicar_regla(p, regla))
+    np.testing.assert_array_equal(p, copia)
+
+
+def test_calibracion_formulas_probabilidades_intactas_bins_y_no_2025():
+    y = [0, 1, 2]
+    p = np.full((3, 3), 1/3)
+    original = p.copy()
+    r, tabla = rd.diagnosticar_calibracion(y, p, 2024)
+    assert r['log_loss'] == pytest.approx(np.log(3))
+    assert r['brier_multiclase'] == pytest.approx(2/3)
+    assert r['confianza_media_maxima'] == pytest.approx(1/3)
+    assert r['ece_macro'] == pytest.approx(0.)
+    assert len(tabla) == 30
+    assert tabla.groupby('clase').n_bin.sum().eq(3).all()
+    assert tabla.loc[tabla.n_bin.eq(0), 'frecuencia_observada'].isna().all()
+    np.testing.assert_array_equal(p, original)
+    perfecto, bins = rd.diagnosticar_calibracion(y, np.eye(3), 2018)
+    assert perfecto['brier_multiclase'] == perfecto['log_loss'] == 0
+    assert bins.loc[bins.bin.eq(9)].n_bin.eq(1).all()
+    with pytest.raises(ValueError, match='desarrollo'):
+        rd.diagnosticar_calibracion(y, p, 2025)
+
+
+def test_calibracion_mala_solo_alerta_no_recalibra():
+    p = np.tile([1., 0., 0.], (120, 1))
+    r, _ = rd.diagnosticar_calibracion(np.ones(120), p, 2023)
+    assert r['alerta_calibracion'] is True
+    assert r['brier_multiclase'] == 2
+    assert np.isfinite(r['log_loss'])
+    np.testing.assert_array_equal(p, np.tile([1., 0., 0.], (120, 1)))
+
+
+def test_mejora_minima_no_compensa_caida_global_y_expansion_es_alerta():
+    r = resultados()
+    mascara = r.regla.eq('alto_0.25')
+    r.loc[mascara, ['proporcion_alto_bajo', 'f1_macro']] = [.049, .689]
+    r.loc[mascara, 'proporcion_predicha_alto'] = .6
+    r.loc[mascara, 'riesgo_expansion_alto'] = True
+    s, elegida = rd.seleccionar_regla(r)
+    fila = s.set_index('regla').loc['alto_0.25']
+    assert fila.admisible and fila.veto_mejora_minima_caida_global
+    assert not fila.elegible_seleccion and elegida == 'argmax'
+    assert fila.riesgo_expansion_alto_promedio and fila.riesgo_expansion_alto_algun_anio
+    # Mejora suficiente mantiene elegibilidad, aun con alerta de expansión.
+    r.loc[mascara, 'proporcion_alto_bajo'] = .04
+    assert rd.seleccionar_regla(r)[1] == 'alto_0.25'
+
+
+def test_calibracion_se_diagnostica_antes_de_aplicar_reglas(tmp_path, monkeypatch):
+    eventos = []
+    original_diag = rd.diagnosticar_calibracion
+    original_eval = rd.evaluar_probabilidades
+    def diagnostico(y, p, anio):
+        eventos.append(anio)
+        return original_diag(y, p, anio)
+    def evaluar(df, train, test, p, anio, reglas, fase):
+        if fase == 'desarrollo':
+            assert anio in eventos
+        return original_eval(df, train, test, p, anio, reglas, fase)
+    monkeypatch.setattr(rd, 'diagnosticar_calibracion', diagnostico)
+    monkeypatch.setattr(rd, 'evaluar_probabilidades', evaluar)
+    rd.evaluar_reglas(datos(), tmp_path, motor=motor_falso())
+    assert eventos == list(rd.ANIOS_DESARROLLO)
+
+
+@pytest.mark.parametrize('umbral', [.40, .35])
+def test_extension_020_seis_reglas_limites_prioridad_y_probabilidades_intactas(umbral):
+    reglas = rd.reglas_extension_020()
+    assert [r['regla'] for r in reglas] == ['argmax', 'proteccion_0.20', 'alto_0.40', 'alto_0.35',
+        'combinada_0.40_0.20', 'combinada_0.35_0.20']
+    assert len(rd.reglas_candidatas()) == 12
+    regla = next(r for r in reglas if r['regla'] == f'combinada_{umbral:.2f}_0.20')
+    p = np.array([[.5, .5-umbral, umbral], [.6, .2, .2], [.7, .11, .19], [.1, .7, .2]])
+    original = p.copy()
+    np.testing.assert_array_equal(rd.aplicar_regla(p, regla), [2, 1, 0, 1])
+    np.testing.assert_array_equal(p, original)
+
+
+def test_extension_reutiliza_hashes_sin_entrenar_ni_consultar_2025(monkeypatch):
+    df = datos()
+    historico, folds, _ = rd.ef.preparar_desarrollo(df)
+    matrices, referencias = {}, []
+    for anio, train, test in folds:
+        p = np.tile([.3, .3, .4], (len(test), 1))
+        matrices[anio] = p
+        referencias.append(rd.evaluar_probabilidades(historico, train, test, p, anio,
+            [rd.reglas_candidatas()[0]], 'desarrollo'))
+    ref = pd.concat(referencias, ignore_index=True)
+    def prohibido(*args, **kwargs):
+        raise AssertionError('La extensión no debe ajustar ni pedir probabilidades nuevas.')
+    monkeypatch.setattr(rd, 'probabilidades_fold', prohibido)
+    monkeypatch.setattr(rd.bt, '_motor_existente', prohibido)
+    original = df.copy(deep=True)
+    df.loc[df.periodo_predicho.ge('2025-01'), rd.bt.OBJETIVO] = 999
+    r, s, elegida = rd.evaluar_extension_020(df, matrices, ref)
+    assert len(r) == 30 and len(s) == 6
+    assert set(r.anio_prueba) == set(rd.ANIOS_DESARROLLO)
+    assert 'reduce_ambos_errores' in s
+    assert r[['predichos_bajo', 'predichos_medio', 'predichos_alto']].sum(axis=1).eq(r.n_test).all()
+    with pytest.raises(ValueError, match='no 2025'):
+        rd.evaluar_extension_020(df, {**matrices, 2025: matrices[2018]}, ref)
+    adulteradas = {**matrices, 2018: matrices[2018][:, [2, 1, 0]].copy()}
+    with pytest.raises(ValueError, match='no coinciden'):
+        rd.evaluar_extension_020(df, adulteradas, ref)
+    final = original.loc[original.periodo_predicho.lt('2026-01')]
+    f2025 = next(f for f in rd.bt.crear_folds_expansivos(final)[0] if f[0] == 2025)
+    anio, train, test = f2025
+    p = np.tile([.3, .3, .4], (len(test), 1))
+    ref2025 = rd.evaluar_probabilidades(final, train, test, p, 2025, [rd.reglas_candidatas()[0]], 'comprobacion_2025')
+    comprobacion = rd.comprobar_extension_020_2025(original, p, ref2025, elegida)
+    assert set(comprobacion.regla) == {rd.BASE, elegida}
