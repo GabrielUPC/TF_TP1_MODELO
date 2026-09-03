@@ -188,20 +188,37 @@ Salidas:
 El riesgo actual se utiliza únicamente para construir la etiqueta futura y los
 baselines. No es una variable predictora del modelo.
 
-Riesgo alto:
+La definición operacional vigente (`riesgo_ocupacion_observada_v2`) depende
+únicamente de la ocupación observada: pacientes-día / días-cama disponibles.
 
-- `ocupacion_estimada >= 0.85`, o
-- `ratio_camas_disponibles <= 0.10`, o
-- `presion_ingresos_camas >= percentil 75`.
+- **Bajo:** `ocupacion_estimada < 0.70`.
+- **Medio:** `0.70 <= ocupacion_estimada < 0.85`.
+- **Alto:** `ocupacion_estimada >= 0.85`.
 
-Riesgo medio:
+Se conserva la codificación bajo=0, medio=1 y alto=2. Se eliminaron del target
+las condiciones de ratio <= 0.10/0.20 y los percentiles globales P50/P75 de
+presión de ingresos. `ratio_camas_disponibles` y `presion_ingresos_camas` siguen
+en el dataset y entre los predictores; no intervienen en la etiqueta.
+Cambiar otros registros del dataset no cambia la etiqueta de una misma ocupación.
 
-- `ocupacion_estimada >= 0.70`, o
-- `ratio_camas_disponibles <= 0.20`, o
-- `presion_ingresos_camas >= percentil 50`.
+`nivel_riesgo_siguiente_mes` es el riesgo observado del mes calendario t+1 para
+la misma IPRESS y servicio. Sin ese mes exacto se descarta el par: no se conecta
+t con t+2. El tratamiento Q05/Q06/Q07/Q08 se aplica antes de consolidación,
+indicadores, variables temporales y etiquetas; su política no cambia aquí.
 
-Los percentiles se calculan sobre valores finitos después de limpieza, filtro y
-consolidación. En la ejecución actual fueron `P50 = 2.60` y `P75 = 4.85`.
+La metadata generada registra `definicion_target`, su versión, fórmula, umbrales
+y codificación. Por compatibilidad se conservan `percentiles_riesgo_actual: {}`
+y `metodo_percentiles`, indicando que no se utilizan. `crear_riesgo_actual`
+conserva la tupla de retorno; su argumento legado `percentiles` se ignora.
+La futura metadata del modelo copia la definición del dataset, sin atribuir
+esta definición a un dataset antiguo que no la incluya.
+
+No se regeneran datasets ni modelos guardados en este cambio. Antes de un futuro
+entrenamiento habrá que preparar nuevamente los datos. Las métricas y modelos
+anteriores corresponden a otra etiqueta y no validan la nueva. El cargador actual
+no bloquea datasets con una definición antigua; esa validación queda pendiente.
+Los baselines de persistencia y regla de ocupación actual pasan a ser equivalentes
+con esta etiqueta; se mantienen ambos sin alterar el protocolo de evaluación.
 
 ### Variables temporales
 
@@ -240,12 +257,10 @@ ni sustituye la validación Q06. No se recortan valores de ocupación mayores a 
 
 La fórmula anterior utilizaba pacientes-día / (camas × días del mes). La nueva
 se aplica en la preparación y en FastAPI mediante las funciones compartidas de
-`indicadores.py`, tanto al registro actual como al historial. Las definiciones
-de riesgo, umbrales y percentiles no se modifican, aunque sus resultados derivados
-pueden cambiar al recalcular la ocupación.
+`indicadores.py`, tanto al registro actual como al historial. La etiqueta vigente
+usa únicamente la ocupación observada, según la definición anterior.
 
-Pendientes fuera de este cambio: `crear_riesgo_actual` aún usa el ratio con los
-umbrales 0.10/0.20; `soporte_decision.py` aún asocia un ratio bajo con “Capacidad
+Pendiente fuera de este cambio: `soporte_decision.py` aún asocia un ratio bajo con “Capacidad
 disponible limitada” y lo incorpora a la brecha operativa. Esas interpretaciones
 no equivalen a camas libres y requieren una revisión separada. Los datasets
 procesados y modelos ya guardados no se regeneran automáticamente: un modelo

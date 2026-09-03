@@ -1,7 +1,7 @@
 {
   "tratamiento_capacidad": {
-    "version": "capacidad_q05_q06_q07_v2",
-    "generado_utc": "2026-09-02T23:36:12.901507+00:00",
+    "version": "capacidad_q05_q06_q07_q08_v3",
+    "generado_utc": "2026-09-03T01:01:04.817372+00:00",
     "raw_sha256": {
       "ConsultaD1_2024_v22.csv": "dcdb9c0f8c81c95db378e0e5952de45d090c0a1a149d79b3dac635c1b13975bb",
       "ConsultaD1_2025_v20.csv": "142c6f98beaf82b0ab6b18f0be6152f15d242bf882c6e8cdffacfbde3767f10d",
@@ -20,23 +20,23 @@
     "reglas_aplicadas": [
       "Q05",
       "Q06",
-      "Q07"
+      "Q07",
+      "Q08"
     ],
-    "criterio": "Apartar mes completo por IPRESS y servicio si alguna fila RAW en alcance tiene Q05/Q06/Q07; no imputar valores.",
-    "filas_raw_pendientes": 201,
-    "meses_servicio_pendientes": 191,
-    "filas_apartadas_antes_consolidacion": 214,
-    "filas_restantes_antes_consolidacion": 51626,
+    "criterio": "Apartar mes completo por IPRESS y servicio si alguna fila RAW en alcance tiene Q05/Q06/Q07/Q08; no imputar valores.",
+    "filas_raw_pendientes": 662,
+    "meses_servicio_pendientes": 635,
+    "filas_apartadas_antes_consolidacion": 732,
+    "filas_restantes_antes_consolidacion": 51108,
     "reglas_solo_auditadas": [
       "Q01",
       "Q02",
       "Q03",
       "Q04",
-      "Q08",
       "Q09"
     ]
   },
-  "dataset_sha256": "d9fc150c2fd0efcfcfee884594c02de3175abdbeffe2abd2ff3eb6339bc3a51a",
+  "dataset_sha256": "272fe6b22168c1d1a40d02bf03a97c00167910801079eab892d8e02109b6da20",
   "raw_sha256": {
     "ConsultaD1_2024_v22.csv": "dcdb9c0f8c81c95db378e0e5952de45d090c0a1a149d79b3dac635c1b13975bb",
     "ConsultaD1_2025_v20.csv": "142c6f98beaf82b0ab6b18f0be6152f15d242bf882c6e8cdffacfbde3767f10d",
@@ -51,9 +51,9 @@
     "ConsultaD1_Hospitalizaciones_Especialidad_2022_v24.csv": "10d80dd6e886446d471bfbdbc45e0a8a032717e12a0fdac8b6d71cd417c0d124",
     "ConsultaD1_Hospitalizaciones_Especialidad_2023_v24.csv": "a1e8e931161b8a9a14583918c417e81de91031f7497b5b7fa5d30ef6145b427e"
   },
-  "numero_filas_antes_objetivo_futuro": 49041,
-  "numero_filas_entrenamiento": 46106,
-  "filas_eliminadas_sin_mes_siguiente": 2935,
+  "numero_filas_antes_objetivo_futuro": 48597,
+  "numero_filas_entrenamiento": 45473,
+  "filas_eliminadas_sin_mes_siguiente": 3124,
   "anios_disponibles": [
     2015,
     2016,
@@ -222,9 +222,9 @@
     "ConsultaD1_Hospitalizaciones_Especialidad_2023_v24.csv"
   ],
   "percentiles_riesgo_actual": {
-    "presion_ingresos_camas_percentil_50": 2.6,
-    "presion_ingresos_camas_percentil_75": 4.833333333333333,
-    "cantidad_valores_validos": 49041
+    "presion_ingresos_camas_percentil_50": 2.588235294117647,
+    "presion_ingresos_camas_percentil_75": 4.8,
+    "cantidad_valores_validos": 48597
   },
   "metodo_percentiles": "Percentiles 50 y 75 calculados globalmente sobre valores finitos de presion_ingresos_camas después de limpieza, filtro y consolidación.",
   "regla_continuidad_objetivo": "Solo se conserva una fila cuando existe exactamente el siguiente mes calendario para la misma IPRESS y servicio."

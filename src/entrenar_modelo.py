@@ -752,6 +752,7 @@ def guardar_resultados(
             {},
         ),
         "metodo_percentiles": metadata_dataset.get("metodo_percentiles", ""),
+        "definicion_target": metadata_dataset.get("definicion_target", {}),
         "advertencia_metodologica": ADVERTENCIA_METODOLOGICA,
         "papers_usados_como_referencia": PAPERS_REFERENCIA,
     }

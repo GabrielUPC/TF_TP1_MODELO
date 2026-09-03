@@ -27,8 +27,9 @@ RAW → auditoría Q00–Q09 → lectura de archivos con esquema válido
     → dataset procesado y metadata
 ```
 
-Las definiciones de consolidación, indicadores, percentiles, variables temporales
-y target permanecen iguales. Al apartar febrero, enero no puede usarlo como
+El tratamiento no modifica las fórmulas de consolidación, indicadores o variables
+temporales. La etiqueta vigente depende solo de ocupación observada, sin ratio ni
+percentiles (véase [README.md](../README.md#riesgo-actual)). Al apartar febrero, enero no puede usarlo como
 etiqueta, febrero no puede ser entrada y marzo no puede incorporar febrero a su
 historial. No se conecta enero con marzo saltando el hueco.
 

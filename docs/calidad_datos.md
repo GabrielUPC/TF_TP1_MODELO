@@ -98,13 +98,15 @@ La limpieza histórica sigue deduplicando, convirtiendo números no interpretabl
 a cero y recortando negativos en memoria; no se rediseña en esta tarea. La nueva
 auditoría registra la evidencia antes de esa limpieza. El tratamiento nuevo solo
 aparta Q05/Q06/Q07/Q08 en alcance, sin imputar. No constituye una solución general para Q01–Q03.
-Los percentiles globales y las diferencias de indicadores/consolidación con Java
-permanecen pendientes de una revisión separada.
+La etiqueta vigente usa únicamente ocupación observada con umbrales 0.70/0.85;
+los percentiles globales y el ratio ya no intervienen en ella. Véase la definición
+metodológica en [README.md](../README.md#riesgo-actual). Las diferencias de
+indicadores/consolidación con Java permanecen pendientes de una revisión separada.
 
 Las pruebas nuevas usan únicamente CSV artificiales en directorios temporales.
 No se ejecuta entrenamiento ni se cambian artefactos `.joblib`.
 
-## Verificación local de esta implementación
+## Verificación histórica de la implementación de auditoría
 
 Se registró la base antes de modificar el código. El lanzador local no pudo
 iniciar Python 3.13, por lo que se usó el intérprete alternativo disponible.

@@ -204,55 +204,29 @@ def crear_indicadores(df: pd.DataFrame) -> pd.DataFrame:
     return agregar_indicadores_dataframe(resultado)
 
 
-def calcular_percentiles_riesgo(df: pd.DataFrame) -> dict[str, float]:
-    presion_valida = (
-        pd.to_numeric(df["presion_ingresos_camas"], errors="coerce")
-        .replace([np.inf, -np.inf], np.nan)
-        .dropna()
-    )
-    if presion_valida.empty:
-        raise ValueError(
-            "No existen valores válidos de presión de ingresos para construir "
-            "la variable objetivo."
-        )
-    return {
-        "presion_ingresos_camas_percentil_50": float(
-            presion_valida.quantile(0.50)
-        ),
-        "presion_ingresos_camas_percentil_75": float(
-            presion_valida.quantile(0.75)
-        ),
-        "cantidad_valores_validos": int(presion_valida.shape[0]),
-    }
-
-
 def crear_riesgo_actual(
     df: pd.DataFrame,
     percentiles: dict[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, float]]:
-    resultado = df.copy()
-    percentiles = percentiles or calcular_percentiles_riesgo(resultado)
-    presion = resultado["presion_ingresos_camas"]
+    """Etiqueta operacional basada exclusivamente en ocupación observada.
 
-    riesgo_alto = (
-        resultado["ocupacion_estimada"].ge(0.85)
-        | resultado["ratio_camas_disponibles"].le(0.10)
-        | presion.ge(percentiles["presion_ingresos_camas_percentil_75"])
-    )
-    riesgo_medio = (
-        resultado["ocupacion_estimada"].ge(0.70)
-        | resultado["ratio_camas_disponibles"].le(0.20)
-        | presion.ge(percentiles["presion_ingresos_camas_percentil_50"])
-    )
+    Se conserva la firma y la tupla de retorno por compatibilidad. El argumento
+    legado percentiles se ignora y el segundo resultado es siempre {}:
+    ya no se calculan ni se usan percentiles para construir la etiqueta.
+    """
+    resultado = df.copy()
+    ocupacion = pd.to_numeric(resultado["ocupacion_estimada"], errors="raise")
+    if not (np.isfinite(ocupacion) & ocupacion.ge(0)).all():
+        raise ValueError("La ocupación para etiquetar debe ser finita y no negativa.")
     resultado["nivel_riesgo_actual"] = np.select(
-        [riesgo_alto, riesgo_medio],
+        [ocupacion.ge(0.85), ocupacion.ge(0.70)],
         ["alto", "medio"],
         default="bajo",
     )
     resultado["nivel_riesgo_actual_codificado"] = (
         resultado["nivel_riesgo_actual"].map(MAPEO_RIESGO).astype(int)
     )
-    return resultado, percentiles
+    return resultado, {}
 
 
 def crear_objetivo_futuro(df: pd.DataFrame) -> pd.DataFrame:
@@ -389,12 +363,25 @@ def _guardar_metadata_dataset(
         "periodos_disponibles": periodos,
         "cantidad_archivos_raw_leidos": len(archivos),
         "archivos_raw_leidos": archivos,
-        "percentiles_riesgo_actual": percentiles,
-        "metodo_percentiles": (
-            "Percentiles 50 y 75 calculados globalmente sobre valores finitos "
-            "de presion_ingresos_camas después de limpieza, filtro y "
-            "consolidación."
-        ),
+        "percentiles_riesgo_actual": {},
+        "metodo_percentiles": "No se utilizan percentiles para construir la etiqueta.",
+        "definicion_target": {
+            "version": "riesgo_ocupacion_observada_v2",
+            "indicador": "ocupacion_estimada",
+            "formula": "total_pacientes_camas / total_camas_disponibles",
+            "unidad": "pacientes-día / días-cama disponibles",
+            "nivel_riesgo_actual": {
+                "bajo": "ocupacion_estimada < 0.70",
+                "medio": "0.70 <= ocupacion_estimada < 0.85",
+                "alto": "ocupacion_estimada >= 0.85",
+            },
+            "codificacion": MAPEO_RIESGO,
+            "nivel_riesgo_siguiente_mes": (
+                "nivel_riesgo_actual del mes calendario t+1 de la misma IPRESS y servicio"
+            ),
+            "usa_ratio_camas_disponibles": False,
+            "usa_percentiles_presion_ingresos_camas": False,
+        },
         "regla_continuidad_objetivo": (
             "Solo se conserva una fila cuando existe exactamente el siguiente "
             "mes calendario para la misma IPRESS y servicio."
