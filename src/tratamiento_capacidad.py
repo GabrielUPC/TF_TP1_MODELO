@@ -1,4 +1,4 @@
-"""Aparta meses Q05/Q06/Q07 usando la evidencia de auditoría RAW."""
+"""Aparta meses Q05/Q06/Q07/Q08 usando la evidencia de auditoría RAW."""
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ if __package__:
 else:
     from datos_raw import limpiar_texto, listar_archivos_csv
 
-VERSION_POLITICA = "capacidad_q05_q06_q07_v2"
+VERSION_POLITICA = "capacidad_q05_q06_q07_q08_v3"
 CLAVE = ["codigo_ipress", "servicio_hospitalizacion", "anio", "mes"]
 RENOMBRES = dict(zip(
     ["CO_IPRESS", "HOSPITALIZACION", "ANHO", "MES"], CLAVE,
@@ -45,7 +45,7 @@ def apartar_meses_pendientes(df: pd.DataFrame, quality_dir: Path, *, raw_sha256:
     """Recibe filas limpias en alcance, pero decide usando alertas sobre RAW.
 
     Retira el mes completo por IPRESS y servicio si alguna fila fuente tiene
-    Q05/Q06/Q07. No modifica df ni RAW. Debe llamarse antes de consolidar y derivar.
+    Q05/Q06/Q07/Q08. No modifica df ni RAW. Debe llamarse antes de consolidar y derivar.
     """
     quality_dir = Path(quality_dir)
     reporte = quality_dir / "hallazgos_calidad.csv"
@@ -53,7 +53,7 @@ def apartar_meses_pendientes(df: pd.DataFrame, quality_dir: Path, *, raw_sha256:
         raise ValueError("Falta la auditoría RAW; no se puede aplicar el tratamiento de capacidad.")
     partes = []
     for chunk in pd.read_csv(reporte, dtype=str, keep_default_na=False, chunksize=100000):
-        mascara = chunk.regla.isin(["Q05", "Q06", "Q07"]) & chunk.en_alcance_modelo.str.lower().eq("true")
+        mascara = chunk.regla.isin(["Q05", "Q06", "Q07", "Q08"]) & chunk.en_alcance_modelo.str.lower().eq("true")
         partes.append(chunk.loc[mascara])
     pendientes = pd.concat(partes, ignore_index=True) if partes else pd.read_csv(reporte, dtype=str, nrows=0)
     pendientes["estado_revision"] = "PENDIENTE_VALIDACION_NO_USAR_ENTRENAMIENTO"
@@ -71,13 +71,13 @@ def apartar_meses_pendientes(df: pd.DataFrame, quality_dir: Path, *, raw_sha256:
         "generado_utc": datetime.now(timezone.utc).isoformat(),
         "raw_sha256": raw_sha256 or {},
         "auditoria_sha256": sha256_archivo(reporte),
-        "reglas_aplicadas": ["Q05", "Q06", "Q07"],
-        "criterio": "Apartar mes completo por IPRESS y servicio si alguna fila RAW en alcance tiene Q05/Q06/Q07; no imputar valores.",
+        "reglas_aplicadas": ["Q05", "Q06", "Q07", "Q08"],
+        "criterio": "Apartar mes completo por IPRESS y servicio si alguna fila RAW en alcance tiene Q05/Q06/Q07/Q08; no imputar valores.",
         "filas_raw_pendientes": int(pendientes[["archivo", "fila_csv_aproximada"]].drop_duplicates().shape[0]),
         "meses_servicio_pendientes": int(len(claves_pendientes)),
         "filas_apartadas_antes_consolidacion": int(retirar.sum()),
         "filas_restantes_antes_consolidacion": int((~retirar).sum()),
-        "reglas_solo_auditadas": ["Q01", "Q02", "Q03", "Q04", "Q08", "Q09"],
+        "reglas_solo_auditadas": ["Q01", "Q02", "Q03", "Q04", "Q09"],
     }
     (quality_dir / "tratamiento_capacidad.json").write_text(json.dumps(tratamiento, ensure_ascii=False, indent=2), encoding="utf-8")
     resultado = df.loc[~retirar].copy()

@@ -421,7 +421,7 @@ def preparar_dataset() -> pd.DataFrame:
     df = filtrar_ipress_publicas_lima(df)
     filas_filtradas = len(df)
 
-    print("Apartando meses pendientes Q05/Q06/Q07 antes de consolidar e inferir riesgo...")
+    print("Apartando meses pendientes Q05/Q06/Q07/Q08 antes de consolidar e inferir riesgo...")
     df, tratamiento = apartar_meses_pendientes(df, QUALITY_DIR, raw_sha256=fuentes)
 
     print("Consolidando datos mensuales por IPRESS, servicio y origen...")

@@ -1,7 +1,7 @@
 # Auditoría de los CSV históricos
 
 La auditoría detecta y registra; no repara, elimina ni sobrescribe archivos RAW.
-El tratamiento posterior toma una decisión distinta: apartar los grupos Q05/Q06/Q07
+El tratamiento posterior toma una decisión distinta: apartar los grupos Q05/Q06/Q07/Q08
 antes de consolidar. Véase [tratamiento_capacidad.md](tratamiento_capacidad.md).
 
 ## Estructura inspeccionada antes del cambio
@@ -69,7 +69,7 @@ en memoria para comparar; los archivos fuente permanecen intactos.
 | Q05 | Camas = 0 con ingresos, egresos, pacientes-día o estancias positivos | REVISAR, problema de capacidad |
 | Q06 | Pacientes-día > 0 y días-cama disponibles = 0 | ERROR, problema de capacidad |
 | Q07 | Camas = pacientes-día positivos × días calendario, métricas enteras y periodo válido | REVISAR, hipótesis de desorden sin corregir columnas |
-| Q08 | Pacientes-día / días-cama disponibles > 1,20, con denominador positivo | Solo REVISAR |
+| Q08 | Pacientes-día / días-cama disponibles > 1,20, con denominador positivo | REVISAR; el tratamiento posterior aparta el grupo en alcance |
 | Q09 | Días-cama disponibles / (camas × días calendario) fuera de 0,5–1,5 | Solo REVISAR |
 
 `REVISAR` corresponde a una advertencia de revisión, no a una corrección. Q07 usa
@@ -97,7 +97,7 @@ si existen campos multilínea o líneas vacías. Los códigos IPRESS conservan c
 La limpieza histórica sigue deduplicando, convirtiendo números no interpretables
 a cero y recortando negativos en memoria; no se rediseña en esta tarea. La nueva
 auditoría registra la evidencia antes de esa limpieza. El tratamiento nuevo solo
-aparta Q05/Q06/Q07, sin imputar. No constituye una solución general para Q01–Q03.
+aparta Q05/Q06/Q07/Q08 en alcance, sin imputar. No constituye una solución general para Q01–Q03.
 Los percentiles globales y las diferencias de indicadores/consolidación con Java
 permanecen pendientes de una revisión separada.
 
