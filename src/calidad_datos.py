@@ -13,6 +13,7 @@ if __package__:
     from .datos_raw import (
         ALIAS_COLUMNAS, COLUMNAS_NUMERICAS, PROJECT_ROOT, RAW_DATA_DIR,
         _detectar_formato, leer_csv, limpiar_texto, listar_archivos_csv,
+        normalizar_codigos_ipress,
         mascara_hospitalizacion_valida, mascara_ipress_publicas_lima,
         normalizar_columnas, validar_columnas,
     )
@@ -20,6 +21,7 @@ else:
     from datos_raw import (
         ALIAS_COLUMNAS, COLUMNAS_NUMERICAS, PROJECT_ROOT, RAW_DATA_DIR,
         _detectar_formato, leer_csv, limpiar_texto, listar_archivos_csv,
+        normalizar_codigos_ipress,
         mascara_hospitalizacion_valida, mascara_ipress_publicas_lima,
         normalizar_columnas, validar_columnas,
     )
@@ -133,6 +135,12 @@ def auditar_dataframe(
     resumen.update(filas_en_alcance_modelo=int(alcance.sum()), alcance_evaluable=evaluable)
     hallazgos = []
     filas_marcadas = pd.Series(False, index=df.index)
+    codigo_ipress_original = df.get(
+        "CO_IPRESS", pd.Series(pd.NA, index=df.index, dtype="string")
+    ).astype("string")
+    codigo_ipress_canonico = normalizar_codigos_ipress(
+        codigo_ipress_original, rechazar_invalidos=False,
+    )
 
     def registrar(regla, mascara, columnas, calculados=None):
         mascara = mascara.fillna(False)
@@ -143,12 +151,25 @@ def auditar_dataframe(
         seleccion = df.loc[mascara]
         for indice, fila in zip(seleccion.index, seleccion.to_dict("records")):
             valores = {c: _valor_json(fila[c]) for c in columnas}
+            codigo_original = _valor_json(codigo_ipress_original.loc[indice])
+            codigo_canonico = _valor_json(codigo_ipress_canonico.loc[indice])
+            if codigo_original != codigo_canonico:
+                valores["CO_IPRESS_ORIGINAL"] = codigo_original
+                valores["CO_IPRESS_CANONICO"] = codigo_canonico
             for c, serie in (calculados or {}).items():
                 valores[c] = _valor_json(serie.loc[indice])
             hallazgos.append({
                 "archivo": archivo, "fila_csv_aproximada": int(indice) + 2,
                 "regla": regla, "severidad": severidad, "descripcion": descripcion,
-                **{destino: _valor_json(fila.get(origen)) for destino, origen in CONTEXTOS.items()},
+                **{
+                    destino: (
+                        _valor_json(codigo_ipress_canonico.loc[indice])
+                        if destino == "codigo_ipress"
+                        and pd.notna(codigo_ipress_canonico.loc[indice])
+                        else _valor_json(fila.get(origen))
+                    )
+                    for destino, origen in CONTEXTOS.items()
+                },
                 "valores_relevantes": json.dumps(valores, ensure_ascii=False, allow_nan=False),
                 "en_alcance_modelo": bool(alcance.loc[indice]),
             })
@@ -160,6 +181,7 @@ def auditar_dataframe(
 
     try:
         validar_columnas(df, archivo)
+        normalizar_codigos_ipress(df["CO_IPRESS"])
         if df.columns.duplicated().any():
             raise ValueError("Nombres de columnas duplicados después de normalizar.")
         for alias, canonica in ALIAS_COLUMNAS.items():

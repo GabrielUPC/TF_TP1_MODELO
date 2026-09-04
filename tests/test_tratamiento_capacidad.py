@@ -57,7 +57,8 @@ def test_aparta_grupo_antes_de_consolidar_y_no_salta_huecos(tmp_path, monkeypatc
     invalida = {"Q07": fila_q07, "Q08": fila_q08}.get(regla, fila)(2)
     if regla in ("Q05", "Q06"):
         invalida["NRO_TOTAL_CAMAS" if regla == "Q05" else "NRO_TOTAL_CAMAS_DISPONIB"] = "0"
-    invalida.update(HOSPITALIZACION=" medicina   general ", RAZON_SOC="OTRO NOMBRE",
+    # La alerta usa la representación corta; debe relacionarse con 00000001.
+    invalida.update(CO_IPRESS="1", HOSPITALIZACION=" medicina   general ", RAZON_SOC="OTRO NOMBRE",
                     NRO_TOTAL_HOSPIT_ING="9999")
     filas.append(invalida)
     fuente = raw/"serie.csv"

@@ -140,7 +140,7 @@ calendario para la misma IPRESS y servicio. No se enlazan periodos con vacíos.
 ## Arquitectura
 
 ```text
-data/raw/*.csv
+data/raw/Hospitalizacion/*.csv
        |
        v
 src/preparar_dataset.py
@@ -173,7 +173,7 @@ pip install -r requirements.txt
 
 ## Preparación de datos
 
-Coloque los CSV en `data/raw/` y ejecute:
+Coloque exclusivamente los CSV D1 en `data/raw/Hospitalizacion/` y ejecute:
 
 ```powershell
 py src/preparar_dataset.py

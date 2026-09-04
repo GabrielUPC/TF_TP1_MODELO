@@ -14,7 +14,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .datos_raw import leer_csv, SECTORES_PUBLICOS, _detectar_formato
+from .datos_raw import (
+    leer_csv, normalizar_codigo_ipress, SECTORES_PUBLICOS, _detectar_formato,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 CLAVE = ['codigo_ipress', 'anio', 'mes']
@@ -47,12 +49,7 @@ def nombre_columna(valor):
     return re.sub(r'[^A-Z0-9]+', '_', texto(valor)).strip('_')
 
 
-def normalizar_codigo(valor):
-    """Formato en memoria: 1-8 dígitos, sufijo decimal .0 permitido; nunca truncar."""
-    s = '' if pd.isna(valor) else str(valor).strip()
-    if not re.fullmatch(r'[0-9]{1,8}(?:\.0+)?', s):
-        return pd.NA
-    return s.split('.')[0].zfill(8)
+normalizar_codigo = normalizar_codigo_ipress
 
 
 def numero(serie):

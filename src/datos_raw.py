@@ -6,7 +6,11 @@ from pathlib import Path
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+RAW_ROOT_DIR = PROJECT_ROOT / "data" / "raw"
+# Directorio dedicado exclusivamente a los D1 de hospitalización. No se hace
+# búsqueda recursiva: Capacidad y futuras fuentes RAW no deben entrar por azar.
+RAW_DATA_DIR = RAW_ROOT_DIR / "Hospitalizacion"
+LONGITUD_CODIGO_IPRESS = 8
 PREFIJOS_SERVICIOS_MODELO = ("24", "25")
 
 SECTORES_PUBLICOS = {
@@ -162,6 +166,63 @@ def limpiar_texto(serie: pd.Series) -> pd.Series:
         .str.replace(r"\s+", " ", regex=True)
         .str.upper()
     )
+
+
+def normalizar_codigo_ipress(valor):
+    """Devuelve el código RENIPRESS canónico de 8 caracteres o ``pd.NA``.
+
+    El código es un identificador, nunca una variable continua. Se admiten
+    entre 1 y 8 dígitos y el sufijo ``.0`` de fuentes tabulares históricas; no
+    se aceptan decimales reales, signos, texto ni valores de más de 8 dígitos.
+    """
+    if pd.isna(valor):
+        return pd.NA
+    texto = str(valor).strip()
+    if not re.fullmatch(r"[0-9]{1,8}(?:\.0+)?", texto):
+        return pd.NA
+    return texto.split(".")[0].zfill(LONGITUD_CODIGO_IPRESS)
+
+
+def normalizar_codigos_ipress(
+    serie: pd.Series, *, rechazar_invalidos: bool = True,
+) -> pd.Series:
+    """Normaliza una serie sin alterar el argumento y controla inválidos."""
+    originales = serie.astype("string")
+    resultado = originales.map(normalizar_codigo_ipress).astype("string")
+    invalidos = resultado.isna()
+    if rechazar_invalidos and invalidos.any():
+        ejemplos = originales.loc[invalidos].head(5).tolist()
+        raise ValueError(
+            "CO_IPRESS debe contener entre 1 y 8 dígitos; "
+            f"valores inválidos de ejemplo: {ejemplos}."
+        )
+    return resultado
+
+
+def resumir_normalizacion_codigo_ipress(serie: pd.Series) -> dict:
+    """Trazabilidad agregada; el literal original permanece en el RAW."""
+    originales = serie.astype("string").str.strip()
+    canonicos = normalizar_codigos_ipress(originales)
+    cambiados = originales.ne(canonicos)
+    ejemplos = (
+        pd.DataFrame({"original": originales, "canonico": canonicos})
+        .loc[cambiados]
+        .drop_duplicates()
+        .head(20)
+        .to_dict(orient="records")
+    )
+    return {
+        "version": "renipress_8_caracteres_v1",
+        "tipo": "identificador_string",
+        "longitud_canonica": LONGITUD_CODIGO_IPRESS,
+        "regla": "strip -> validar 1-8 dígitos (sufijo .0 permitido) -> zfill(8)",
+        "filas_evaluadas": int(len(originales)),
+        "filas_transformadas": int(cambiados.sum()),
+        "codigos_distintos_originales": int(originales.nunique()),
+        "codigos_distintos_canonicos": int(canonicos.nunique()),
+        "ejemplos": ejemplos,
+        "trazabilidad_original": "El literal original permanece inmutable en data/raw y se identifica mediante archivo_origen.",
+    }
 
 
 def listar_archivos_csv(raw_dir: Path) -> list[Path]:

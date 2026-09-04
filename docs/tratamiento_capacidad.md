@@ -5,6 +5,10 @@ Versión: **`capacidad_q05_q06_q07_q08_v3`**.
 Si una fila RAW en alcance tiene Q05, Q06, Q07 o Q08, queda pendiente todo el grupo
 `codigo_ipress + servicio_hospitalizacion + anio + mes`. La clave se normaliza
 igual que en la preparación; no depende del nombre del hospital ni del archivo.
+`codigo_ipress` se valida como identificador de 1 a 8 dígitos y se representa
+como string de 8 caracteres con ceros iniciales antes de comparar las claves.
+El literal original permanece en el RAW y la auditoría registra original y
+canónico para trazabilidad.
 Se aparta antes de consolidar: una fila válida no puede esconder el problema al
 sumarse con otra del mismo grupo. No se excluyen hospitales o años completos.
 

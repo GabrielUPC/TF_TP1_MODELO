@@ -232,6 +232,10 @@ def test_pipeline_metadata_documenta_etiqueta_observada_sin_percentiles(tmp_path
     assert resultado.nivel_riesgo_siguiente_mes.tolist() == ["medio", "alto"]
     assert {"ratio_camas_disponibles", "presion_ingresos_camas"}.issubset(resultado.columns)
     info = json.loads(metadata.read_text(encoding="utf-8"))
+    normalizacion = info["normalizacion_codigo_ipress"]
+    assert normalizacion["version"] == "renipress_8_caracteres_v1"
+    assert normalizacion["longitud_canonica"] == 8
+    assert normalizacion["filas_transformadas"] == 0
     assert info["percentiles_riesgo_actual"] == {}
     assert info["metodo_percentiles"] == "No se utilizan percentiles para construir la etiqueta."
     definicion = info["definicion_target"]

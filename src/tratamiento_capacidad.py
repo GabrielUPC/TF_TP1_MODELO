@@ -7,9 +7,9 @@ from pathlib import Path
 import pandas as pd
 
 if __package__:
-    from .datos_raw import limpiar_texto, listar_archivos_csv
+    from .datos_raw import limpiar_texto, listar_archivos_csv, normalizar_codigos_ipress
 else:
-    from datos_raw import limpiar_texto, listar_archivos_csv
+    from datos_raw import limpiar_texto, listar_archivos_csv, normalizar_codigos_ipress
 
 VERSION_POLITICA = "capacidad_q05_q06_q07_q08_v3"
 CLAVE = ["codigo_ipress", "servicio_hospitalizacion", "anio", "mes"]
@@ -29,8 +29,10 @@ def huellas_raw(raw_dir: Path) -> dict[str, str]:
 
 def _claves(df: pd.DataFrame) -> pd.DataFrame:
     claves = df.rename(columns=RENOMBRES)[CLAVE].copy()
-    for c in CLAVE[:2]:
-        claves[c] = limpiar_texto(claves[c])
+    claves["codigo_ipress"] = normalizar_codigos_ipress(claves["codigo_ipress"])
+    claves["servicio_hospitalizacion"] = limpiar_texto(
+        claves["servicio_hospitalizacion"]
+    )
     for c in CLAVE[2:]:
         numeros = pd.to_numeric(claves[c], errors="raise")
         if numeros.isna().any() or numeros.mod(1).ne(0).any():

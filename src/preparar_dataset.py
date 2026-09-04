@@ -8,10 +8,11 @@ if __package__:
     from .tratamiento_capacidad import apartar_meses_pendientes, huellas_raw, sha256_archivo
     from .datos_raw import (
         ALIAS_COLUMNAS, COLUMNAS_AGRUPACION, COLUMNAS_NUMERICAS, COLUMNAS_TEXTO,
-        CSVVacioError, MENSAJE_CSV_VACIO, SECTORES_PUBLICOS, _detectar_formato,
+        CSVVacioError, MENSAJE_CSV_VACIO, RAW_DATA_DIR, SECTORES_PUBLICOS, _detectar_formato,
         _es_archivo_temporal, leer_csv, limpiar_texto, listar_archivos_csv,
         mascara_hospitalizacion_valida, mascara_ipress_publicas_lima,
-        normalizar_columnas, validar_columnas,
+        normalizar_columnas, normalizar_codigos_ipress,
+        resumir_normalizacion_codigo_ipress, validar_columnas,
     )
     from .calidad_datos import auditar_directorio
     from .indicadores import agregar_indicadores_dataframe
@@ -23,10 +24,11 @@ else:
     from tratamiento_capacidad import apartar_meses_pendientes, huellas_raw, sha256_archivo
     from datos_raw import (
         ALIAS_COLUMNAS, COLUMNAS_AGRUPACION, COLUMNAS_NUMERICAS, COLUMNAS_TEXTO,
-        CSVVacioError, MENSAJE_CSV_VACIO, SECTORES_PUBLICOS, _detectar_formato,
+        CSVVacioError, MENSAJE_CSV_VACIO, RAW_DATA_DIR, SECTORES_PUBLICOS, _detectar_formato,
         _es_archivo_temporal, leer_csv, limpiar_texto, listar_archivos_csv,
         mascara_hospitalizacion_valida, mascara_ipress_publicas_lima,
-        normalizar_columnas, validar_columnas,
+        normalizar_columnas, normalizar_codigos_ipress,
+        resumir_normalizacion_codigo_ipress, validar_columnas,
     )
     from calidad_datos import auditar_directorio
     from indicadores import agregar_indicadores_dataframe
@@ -37,7 +39,6 @@ else:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 OUTPUT_PATH = PROCESSED_DIR / "dataset_modelo_ipress.csv"
 DATASET_METADATA_PATH = PROCESSED_DIR / "dataset_metadata.json"
@@ -155,6 +156,7 @@ def limpiar_registros(df: pd.DataFrame) -> pd.DataFrame:
     resultado = df.drop_duplicates().copy()
     for columna in COLUMNAS_TEXTO:
         resultado[columna] = limpiar_texto(resultado[columna])
+    resultado["CO_IPRESS"] = normalizar_codigos_ipress(resultado["CO_IPRESS"])
 
     resultado = resultado.loc[mascara_hospitalizacion_valida(resultado)].copy()
     resultado["ANHO"] = pd.to_numeric(resultado["ANHO"], errors="coerce")
@@ -337,6 +339,7 @@ def _guardar_metadata_dataset(
     percentiles: dict[str, float],
     tratamiento: dict,
     fuentes: dict[str, str],
+    normalizacion_codigo_ipress: dict,
 ) -> None:
     archivos = sorted(
         df_antes_objetivo["archivo_origen"].dropna().astype(str).unique().tolist()
@@ -352,6 +355,7 @@ def _guardar_metadata_dataset(
         "tratamiento_capacidad": tratamiento,
         "dataset_sha256": sha256_archivo(OUTPUT_PATH),
         "raw_sha256": fuentes,
+        "normalizacion_codigo_ipress": normalizacion_codigo_ipress,
         "numero_filas_antes_objetivo_futuro": int(df_antes_objetivo.shape[0]),
         "numero_filas_entrenamiento": int(df_entrenamiento.shape[0]),
         "filas_eliminadas_sin_mes_siguiente": int(
@@ -399,6 +403,9 @@ def preparar_dataset() -> pd.DataFrame:
     auditoria = auditar_directorio(RAW_DATA_DIR, QUALITY_DIR)
     df = leer_todos_los_csv(RAW_DATA_DIR, archivos=auditoria.archivos_validos)
     filas_combinadas = len(df)
+    normalizacion_codigo_ipress = resumir_normalizacion_codigo_ipress(
+        df["CO_IPRESS"]
+    )
 
     print("\nLimpiando registros...")
     df = limpiar_registros(df)
@@ -432,7 +439,10 @@ def preparar_dataset() -> pd.DataFrame:
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     df_entrenamiento.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
-    _guardar_metadata_dataset(df, df_entrenamiento, percentiles, tratamiento, fuentes)
+    _guardar_metadata_dataset(
+        df, df_entrenamiento, percentiles, tratamiento, fuentes,
+        normalizacion_codigo_ipress,
+    )
 
     periodos = sorted(df["anio"].astype(str) + "-" + df["mes"].astype(str).str.zfill(2))
     print("\nDataset preparado correctamente.")

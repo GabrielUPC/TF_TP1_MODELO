@@ -53,7 +53,8 @@ La auditoría lee con `conservar_originales=True` para no convertir literales co
 `NA`, `null` o vacíos en valores distintos. La preparación conserva la lectura
 heredada. No se duplican los lectores ni los filtros de alcance.
 
-Se inspeccionan todos los CSV no temporales de `data/raw`, de todas las regiones
+Se inspeccionan todos los CSV no temporales de
+`data/raw/Hospitalizacion`, de todas las regiones
 y sectores. `en_alcance_modelo` distingue Lima/Lima, sectores públicos admitidos,
 e ID_HOSPITALIZACION cuyo texto, tras quitar espacios extremos, comienza con
 24 (hospitalización) o 25 (cuidados críticos). Se conserva 245600, hospitalización
@@ -61,6 +62,13 @@ de día. El nombre, sus tildes o su ausencia no incluyen ni excluyen un ID; las
 familias 22, 23, 04, 13, 15, 16 y cualquier otra quedan fuera. Se mantienen ceros
 iniciales: 0241800 no se transforma en 241800. Auditoría y preparación usan la
 misma función. Se normaliza en memoria; los archivos fuente permanecen intactos.
+
+El contexto `codigo_ipress` de los hallazgos utiliza la representación canónica
+RENIPRESS de 8 caracteres. Cuando ocurre una transformación,
+`valores_relevantes` conserva tanto
+`CO_IPRESS_ORIGINAL` como `CO_IPRESS_CANONICO`; el RAW permanece inmutable. La
+misma función compartida se usa en preparación y tratamiento para evitar que
+una alerta con `9251` deje de coincidir con una fila preparada como `00009251`.
 
 ## Reglas
 
