@@ -1,4 +1,5 @@
 import pytest
+import pandas as pd
 from fastapi.testclient import TestClient
 
 from src import main, predecir
@@ -191,3 +192,124 @@ def test_cargar_artefactos_informa_modelo_ausente(
         predecir.cargar_artefactos()
 
     predecir.limpiar_caches()
+
+
+def solicitud_binaria_valida() -> dict:
+    return {
+        "registro_actual": datos_base(2024, 6),
+        "historial_ultimos_meses": [datos_base(2024, mes) for mes in range(1, 6)],
+    }
+
+
+def test_prediccion_binaria_responde_con_contrato_separado(monkeypatch) -> None:
+    entrada_recibida = {}
+
+    monkeypatch.setattr(main, "cargar_artefactos_binarios", lambda: ({"id": "binario"}, {}))
+
+    def inferencia_falsa(artefacto, entrada):
+        entrada_recibida["artefacto"] = artefacto
+        entrada_recibida["columnas"] = list(entrada.columns)
+        return pd.DataFrame({
+            "probabilidad_alta_presion": [0.78],
+            "threshold": [0.36],
+            "alerta_alta_presion": [True],
+        })
+
+    monkeypatch.setattr(main, "predecir_alta_presion", inferencia_falsa)
+    respuesta = client.post("/prediccion-binaria", json=solicitud_binaria_valida())
+
+    assert respuesta.status_code == 200
+    cuerpo = respuesta.json()
+    assert cuerpo == {
+        "probabilidad_alta_presion": 0.78,
+        "threshold": 0.36,
+        "alerta_alta_presion": True,
+        "codigo_ipress": "00006207",
+        "servicio_hospitalizacion": "HOSPITALIZACION GENERAL",
+        "periodo_actual": "2024-06",
+        "periodo_predicho": "2024-07",
+        "horizonte_prediccion": "mes_siguiente",
+        "modelo": "modelo_ipress_binario_v1",
+    }
+    assert len(entrada_recibida["columnas"]) == 62
+    assert "nivel_riesgo_actual" not in entrada_recibida["columnas"]
+    assert entrada_recibida["artefacto"] == {"id": "binario"}
+
+
+def test_prediccion_binaria_no_inventa_historial() -> None:
+    solicitud = solicitud_binaria_valida()
+    solicitud["historial_ultimos_meses"] = solicitud["historial_ultimos_meses"][:-1]
+
+    respuesta = client.post("/prediccion-binaria", json=solicitud)
+
+    assert respuesta.status_code == 422
+    assert respuesta.json()["detail"]["estado"] == "datos_insuficientes"
+
+
+def test_prediccion_binaria_feature_cruda_faltante_es_4xx() -> None:
+    solicitud = solicitud_binaria_valida()
+    del solicitud["registro_actual"]["total_camas"]
+
+    respuesta = client.post("/prediccion-binaria", json=solicitud)
+
+    assert respuesta.status_code == 422
+
+
+def test_prediccion_binaria_request_invalido_es_4xx() -> None:
+    solicitud = solicitud_binaria_valida()
+    solicitud["registro_actual"]["mes"] = 13
+
+    respuesta = client.post("/prediccion-binaria", json=solicitud)
+
+    assert respuesta.status_code == 422
+
+
+def test_prediccion_binaria_rechaza_servicio_fuera_del_alcance() -> None:
+    solicitud = solicitud_binaria_valida()
+    solicitud["registro_actual"]["id_hospitalizacion"] = "220100"
+
+    respuesta = client.post("/prediccion-binaria", json=solicitud)
+
+    assert respuesta.status_code == 400
+    assert respuesta.json()["detail"]["estado"] == "entrada_invalida"
+
+
+def test_prediccion_binaria_rechaza_infinito() -> None:
+    solicitud = solicitud_binaria_valida()
+    solicitud["registro_actual"]["total_camas"] = "Infinity"
+
+    respuesta = client.post("/prediccion-binaria", json=solicitud)
+
+    assert respuesta.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "error,estado,codigo",
+    [
+        (FileNotFoundError("modelo ausente"), "modelo_no_disponible", 503),
+        (ValueError("metadata distinta"), "metadata_incompatible", 500),
+    ],
+)
+def test_prediccion_binaria_error_de_artefactos_controlado(
+    monkeypatch, error, estado, codigo,
+) -> None:
+    def fallar():
+        raise error
+
+    monkeypatch.setattr(main, "cargar_artefactos_binarios", fallar)
+    respuesta = client.post("/prediccion-binaria", json=solicitud_binaria_valida())
+
+    assert respuesta.status_code == codigo
+    assert respuesta.json()["detail"]["estado"] == estado
+
+
+def test_prediccion_binaria_no_altera_respuesta_legacy(monkeypatch) -> None:
+    monkeypatch.setattr(main, "predecir_riesgo", prediccion_falsa)
+    respuesta = client.post(
+        "/predict",
+        json={"registro_actual": datos_base(), "historial_ultimos_meses": []},
+    )
+
+    assert respuesta.status_code == 200
+    assert respuesta.json()["nivel_riesgo_predicho"] == "medio"
+    assert "probabilidad_alta_presion" not in respuesta.json()

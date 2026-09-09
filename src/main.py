@@ -7,6 +7,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.indicadores import agregar_indicadores_registro
 from src.predecir import obtener_metadata_publica, predecir_riesgo
 from src.modelo_final import preparar_entrada_d, SIGNIFICADO_PROBABILIDAD, SIGNIFICADO_INDICE
+from src.features_binarias import preparar_entrada_binaria
+from src.inferencia_binaria import (
+    SIGNIFICADO_PROBABILIDAD as SIGNIFICADO_PROBABILIDAD_BINARIA,
+    VERSION_MODELO as VERSION_MODELO_BINARIO,
+    cargar_artefactos_binarios,
+    predecir_alta_presion,
+)
 from src.variables_temporales import (
     periodo_siguiente,
 )
@@ -77,6 +84,19 @@ class SolicitudPrediccion(BaseModel):
     )
 
 
+class DatosHospitalariosBinarios(DatosHospitalarios):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+
+class SolicitudPrediccionBinaria(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    registro_actual: DatosHospitalariosBinarios
+    historial_ultimos_meses: list[DatosHospitalariosBinarios] = Field(
+        default_factory=list,
+    )
+
+
 class VariablePrincipal(BaseModel):
     variable: str
     valor: Any
@@ -109,6 +129,22 @@ class ResultadoPrediccion(BaseModel):
     probabilidad_riesgo_alto: float
     advertencia_historial: str | None
     mensaje: str
+
+
+class ResultadoPrediccionBinaria(BaseModel):
+    probabilidad_alta_presion: float = Field(
+        ge=0,
+        le=1,
+        description=SIGNIFICADO_PROBABILIDAD_BINARIA,
+    )
+    threshold: float = Field(ge=0, le=1)
+    alerta_alta_presion: bool
+    codigo_ipress: str
+    servicio_hospitalizacion: str
+    periodo_actual: str
+    periodo_predicho: str
+    horizonte_prediccion: str
+    modelo: str
 
 
 @app.get("/")
@@ -180,3 +216,75 @@ def predict(solicitud: SolicitudPrediccion) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except RuntimeError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
+
+
+@app.post("/prediccion-binaria", response_model=ResultadoPrediccionBinaria)
+def prediccion_binaria(
+    solicitud: SolicitudPrediccionBinaria,
+) -> dict[str, Any]:
+    """Predice si la ocupación superará 90 % en el siguiente mes exacto."""
+    try:
+        actual = agregar_indicadores_registro(
+            solicitud.registro_actual.model_dump()
+        )
+        historial = [
+            agregar_indicadores_registro(registro.model_dump())
+            for registro in solicitud.historial_ultimos_meses
+        ]
+        entrada, historial_completo = preparar_entrada_binaria(actual, historial)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=400,
+            detail={"estado": "entrada_invalida", "mensaje": str(error)},
+        ) from error
+
+    if not historial_completo:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "estado": "datos_insuficientes",
+                "mensaje": (
+                    "Se requieren los cinco meses calendario exactos anteriores "
+                    "del mismo IPRESS y servicio para construir las 62 features."
+                ),
+            },
+        )
+
+    try:
+        artefacto, _ = cargar_artefactos_binarios()
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={"estado": "modelo_no_disponible", "mensaje": str(error)},
+        ) from error
+    except (TypeError, ValueError, RuntimeError) as error:
+        raise HTTPException(
+            status_code=500,
+            detail={"estado": "metadata_incompatible", "mensaje": str(error)},
+        ) from error
+
+    try:
+        resultado = predecir_alta_presion(artefacto, entrada).iloc[0]
+    except (TypeError, ValueError, RuntimeError) as error:
+        raise HTTPException(
+            status_code=500,
+            detail={"estado": "inferencia_incompatible", "mensaje": str(error)},
+        ) from error
+
+    return {
+        "probabilidad_alta_presion": float(resultado["probabilidad_alta_presion"]),
+        "threshold": float(resultado["threshold"]),
+        "alerta_alta_presion": bool(resultado["alerta_alta_presion"]),
+        "codigo_ipress": solicitud.registro_actual.codigo_ipress,
+        "servicio_hospitalizacion": solicitud.registro_actual.servicio_hospitalizacion,
+        "periodo_actual": (
+            f"{solicitud.registro_actual.anio:04d}-"
+            f"{solicitud.registro_actual.mes:02d}"
+        ),
+        "periodo_predicho": periodo_siguiente(
+            solicitud.registro_actual.anio,
+            solicitud.registro_actual.mes,
+        ),
+        "horizonte_prediccion": "mes_siguiente",
+        "modelo": VERSION_MODELO_BINARIO,
+    }

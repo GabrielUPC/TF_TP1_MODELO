@@ -29,6 +29,8 @@ def _clases(valores):
 
 
 def validar_periodos(df):
+    if "alta_presion_capacidad_siguiente_mes" in df:
+        raise ValueError("Dataset binario: utilice src.backtesting_binario; este módulo es legacy multiclase.")
     if df.empty or not df.index.is_unique:
         raise ValueError("Dataset vacío o índices duplicados.")
     actual = pd.PeriodIndex(df["periodo_actual"].astype(str), freq="M")

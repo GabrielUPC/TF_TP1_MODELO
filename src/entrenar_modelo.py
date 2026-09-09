@@ -62,6 +62,7 @@ CLASES_PATH = MODELS_DIR / "clases_riesgo.json"
 METADATA_PATH = MODELS_DIR / "model_metadata.json"
 IMPORTANCIA_PATH = MODELS_DIR / "importancia_variables.csv"
 
+# LEGACY: el nuevo target científico se evalúa con src.backtesting_binario.
 VARIABLE_OBJETIVO = "nivel_riesgo_siguiente_mes_codificado"
 CLASES_RIESGO = {0: "bajo", 1: "medio", 2: "alto"}
 ANIO_PRUEBA_TEMPORAL: int | None = None
@@ -182,6 +183,8 @@ def cargar_metadata_dataset() -> dict[str, Any]:
 
 
 def separar_variables(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
+    if "alta_presion_capacidad_siguiente_mes" in df:
+        raise ValueError("Dataset binario: utilice src.backtesting_binario; entrenamiento multiclase legacy deshabilitado para este dataset.")
     X = df[COLUMNAS_PREDICTORAS].copy()
     y = pd.to_numeric(df[VARIABLE_OBJETIVO], errors="raise").astype(int)
     clases_encontradas = set(y.unique())

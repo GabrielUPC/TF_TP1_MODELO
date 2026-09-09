@@ -1,3 +1,4 @@
+import argparse
 import json
 from pathlib import Path
 
@@ -5,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 if __package__:
+    from .features_binarias import FEATURES_D_BINARIAS, agregar_features_binarias, derivar_familia_servicio
     from .tratamiento_capacidad import apartar_meses_pendientes, huellas_raw, sha256_archivo
     from .datos_raw import (
         ALIAS_COLUMNAS, COLUMNAS_AGRUPACION, COLUMNAS_NUMERICAS, COLUMNAS_TEXTO,
@@ -21,6 +23,7 @@ if __package__:
         agregar_variables_temporales,
     )
 else:
+    from features_binarias import FEATURES_D_BINARIAS, agregar_features_binarias, derivar_familia_servicio
     from tratamiento_capacidad import apartar_meses_pendientes, huellas_raw, sha256_archivo
     from datos_raw import (
         ALIAS_COLUMNAS, COLUMNAS_AGRUPACION, COLUMNAS_NUMERICAS, COLUMNAS_TEXTO,
@@ -100,16 +103,23 @@ COLUMNAS_BASE_SALIDA = [
     "diferencia_ingresos_egresos",
 ]
 
-COLUMNAS_OBJETIVO = [
+# Compatibilidad productiva: estas etiquetas ya no son el target científico.
+COLUMNAS_OBJETIVO_LEGACY = [
     "nivel_riesgo_actual",
     "nivel_riesgo_actual_codificado",
     "nivel_riesgo_siguiente_mes",
     "nivel_riesgo_siguiente_mes_codificado",
 ]
 
+TARGET_BINARIO = "alta_presion_capacidad_siguiente_mes"
+VERSION_TARGET_BINARIO = "alta_presion_capacidad_t1_v1"
+COLUMNAS_OBJETIVO = ["ocupacion_siguiente_mes", TARGET_BINARIO, *COLUMNAS_OBJETIVO_LEGACY]
+
 COLUMNAS_SALIDA = [
     *COLUMNAS_BASE_SALIDA,
     *COLUMNAS_TEMPORALES,
+    *FEATURES_D_BINARIAS,
+    "familia_servicio",
     *COLUMNAS_OBJETIVO,
 ]
 
@@ -210,7 +220,9 @@ def crear_riesgo_actual(
     df: pd.DataFrame,
     percentiles: dict[str, float] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, float]]:
-    """Etiqueta operacional basada exclusivamente en ocupación observada.
+    """Etiqueta LEGACY para compatibilidad del modelo multiclase productivo.
+
+    No se utiliza como target ni como predictor del experimento binario.
 
     Se conserva la firma y la tupla de retorno por compatibilidad. El argumento
     legado percentiles se ignora y el segundo resultado es siempre {}:
@@ -236,8 +248,7 @@ def crear_objetivo_futuro(df: pd.DataFrame) -> pd.DataFrame:
         *GRUPO_SERIE_TEMPORAL,
         "anio",
         "mes",
-        "nivel_riesgo_actual",
-        "nivel_riesgo_actual_codificado",
+        "ocupacion_estimada",
     }
     faltantes = sorted(requeridas.difference(df.columns))
     if faltantes:
@@ -247,6 +258,10 @@ def crear_objetivo_futuro(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     resultado = df.copy()
+    ocupacion = pd.to_numeric(resultado["ocupacion_estimada"], errors="raise")
+    if not (np.isfinite(ocupacion) & ocupacion.ge(0)).fillna(False).all():
+        raise ValueError("La ocupación futura debe proceder de observaciones finitas y no negativas.")
+    resultado["ocupacion_estimada"] = ocupacion
     resultado["_orden_original"] = np.arange(len(resultado))
     resultado["_periodo"] = pd.to_datetime(
         {
@@ -274,25 +289,27 @@ def crear_objetivo_futuro(df: pd.DataFrame) -> pd.DataFrame:
         sort=False,
         observed=True,
     )
-    riesgo_siguiente = grupos["nivel_riesgo_actual"].shift(-1)
-    codigo_siguiente = grupos["nivel_riesgo_actual_codificado"].shift(-1)
+    ocupacion_siguiente = grupos["ocupacion_estimada"].shift(-1)
     periodo_observado_siguiente = grupos["_periodo"].shift(-1)
     periodo_esperado = resultado["_periodo"] + 1
     tiene_mes_siguiente = periodo_observado_siguiente.eq(periodo_esperado)
 
     resultado["periodo_actual"] = resultado["_periodo"].astype(str)
     resultado["periodo_predicho"] = periodo_esperado.astype(str)
-    resultado["nivel_riesgo_siguiente_mes"] = riesgo_siguiente.where(
-        tiene_mes_siguiente
-    )
-    resultado["nivel_riesgo_siguiente_mes_codificado"] = (
-        codigo_siguiente.where(tiene_mes_siguiente)
-    )
-
+    resultado["ocupacion_siguiente_mes"] = ocupacion_siguiente.where(tiene_mes_siguiente)
+    # Columnas legacy opcionales: la verdad binaria no se deriva de ellas.
+    for actual, futuro in [
+        ("nivel_riesgo_actual", "nivel_riesgo_siguiente_mes"),
+        ("nivel_riesgo_actual_codificado", "nivel_riesgo_siguiente_mes_codificado"),
+    ]:
+        if actual in resultado:
+            resultado[futuro] = grupos[actual].shift(-1).where(tiene_mes_siguiente)
     resultado = resultado.loc[tiene_mes_siguiente].copy()
-    resultado["nivel_riesgo_siguiente_mes_codificado"] = resultado[
-        "nivel_riesgo_siguiente_mes_codificado"
-    ].astype(int)
+    resultado[TARGET_BINARIO] = resultado["ocupacion_siguiente_mes"].gt(0.90).astype(int)
+    if "nivel_riesgo_siguiente_mes_codificado" in resultado:
+        resultado["nivel_riesgo_siguiente_mes_codificado"] = resultado[
+            "nivel_riesgo_siguiente_mes_codificado"
+        ].astype(int)
     return (
         resultado.sort_values("_orden_original")
         .drop(columns=["_orden_original", "_periodo"])
@@ -301,7 +318,7 @@ def crear_objetivo_futuro(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def crear_variable_objetivo(df: pd.DataFrame) -> pd.DataFrame:
-    """Compatibilidad: crea riesgo actual y objetivo del mes siguiente."""
+    """Crea target binario futuro y conserva etiquetas legacy de compatibilidad."""
     con_riesgo, _ = crear_riesgo_actual(df)
     return crear_objetivo_futuro(con_riesgo)
 
@@ -340,6 +357,7 @@ def _guardar_metadata_dataset(
     tratamiento: dict,
     fuentes: dict[str, str],
     normalizacion_codigo_ipress: dict,
+    *, output_path: Path | None = None, metadata_path: Path | None = None,
 ) -> None:
     archivos = sorted(
         df_antes_objetivo["archivo_origen"].dropna().astype(str).unique().tolist()
@@ -351,9 +369,13 @@ def _guardar_metadata_dataset(
             + df_antes_objetivo["mes"].astype(str).str.zfill(2)
         )["periodo"].unique().tolist()
     )
+    output_path = OUTPUT_PATH if output_path is None else output_path
+    metadata_path = DATASET_METADATA_PATH if metadata_path is None else metadata_path
+    positivos = int(df_entrenamiento[TARGET_BINARIO].sum())
+    total = len(df_entrenamiento)
     metadata = {
         "tratamiento_capacidad": tratamiento,
-        "dataset_sha256": sha256_archivo(OUTPUT_PATH),
+        "dataset_sha256": sha256_archivo(output_path),
         "raw_sha256": fuentes,
         "normalizacion_codigo_ipress": normalizacion_codigo_ipress,
         "numero_filas_antes_objetivo_futuro": int(df_antes_objetivo.shape[0]),
@@ -370,6 +392,23 @@ def _guardar_metadata_dataset(
         "percentiles_riesgo_actual": {},
         "metodo_percentiles": "No se utilizan percentiles para construir la etiqueta.",
         "definicion_target": {
+            "version": VERSION_TARGET_BINARIO,
+            "tipo": "clasificacion_binaria",
+            "variable_objetivo": TARGET_BINARIO,
+            "indicador": "ocupacion_siguiente_mes",
+            "formula_ocupacion": "total_pacientes_camas / total_camas_disponibles",
+            "umbral": 0.90, "comparador": ">",
+            "clase_positiva": "Condición futura de alta presión sobre la capacidad de camas",
+            "horizonte": "mes calendario siguiente exacto",
+            "unidad_analisis": "IPRESS + servicio hospitalario + mes",
+            "numero_total": total, "positivos": positivos,
+            "negativos": total - positivos, "prevalencia": positivos / total,
+            "regla_continuidad": "Misma IPRESS y servicio; solo t+1 calendario exacto, sin saltar huecos.",
+            "limitacion": "D1 no observa directamente demanda rechazada; el evento no demuestra falta real de camas.",
+            "sensibilidades": ["ocupacion_(t+1) > 0.85", "ocupacion_(t+1) > Q90 histórico hasta t"],
+        },
+        "etiquetas_legacy": {
+            "estado": "Solo compatibilidad; excluidas de predictores y evaluación binaria.",
             "version": "riesgo_ocupacion_observada_v2",
             "indicador": "ocupacion_estimada",
             "formula": "total_pacientes_camas / total_camas_disponibles",
@@ -391,16 +430,21 @@ def _guardar_metadata_dataset(
             "mes calendario para la misma IPRESS y servicio."
         ),
     }
-    DATASET_METADATA_PATH.write_text(
+    metadata_path.write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
 
-def preparar_dataset() -> pd.DataFrame:
+def preparar_dataset(output_dir: Path | None = None) -> pd.DataFrame:
+    """Prepara el dataset binario; salida alternativa para experimentos aislados."""
+    processed_dir = PROCESSED_DIR if output_dir is None else Path(output_dir)
+    output_path = OUTPUT_PATH if output_dir is None else processed_dir / "dataset_modelo_ipress.csv"
+    metadata_path = DATASET_METADATA_PATH if output_dir is None else processed_dir / "dataset_metadata.json"
+    quality_dir = QUALITY_DIR if output_dir is None else processed_dir / "quality"
     fuentes = huellas_raw(RAW_DATA_DIR)
     # Los reportes deben existir antes de toda limpieza destructiva.
-    auditoria = auditar_directorio(RAW_DATA_DIR, QUALITY_DIR)
+    auditoria = auditar_directorio(RAW_DATA_DIR, quality_dir)
     df = leer_todos_los_csv(RAW_DATA_DIR, archivos=auditoria.archivos_validos)
     filas_combinadas = len(df)
     normalizacion_codigo_ipress = resumir_normalizacion_codigo_ipress(
@@ -416,7 +460,7 @@ def preparar_dataset() -> pd.DataFrame:
     filas_filtradas = len(df)
 
     print("Apartando meses pendientes Q05/Q06/Q07/Q08 antes de consolidar e inferir riesgo...")
-    df, tratamiento = apartar_meses_pendientes(df, QUALITY_DIR, raw_sha256=fuentes)
+    df, tratamiento = apartar_meses_pendientes(df, quality_dir, raw_sha256=fuentes)
 
     print("Consolidando datos mensuales por IPRESS, servicio y origen...")
     df = consolidar_dataset(df)
@@ -424,10 +468,12 @@ def preparar_dataset() -> pd.DataFrame:
     print("Calculando indicadores y variables temporales...")
     df = crear_indicadores(df)
     df = agregar_variables_temporales(df)
-    df, percentiles = crear_riesgo_actual(df)
+    df = agregar_features_binarias(df)
+    df["familia_servicio"] = derivar_familia_servicio(df["id_hospitalizacion"])
+    df, percentiles = crear_riesgo_actual(df)  # Solo compatibilidad legacy.
     filas_antes_objetivo = len(df)
 
-    print("Creando objetivo de riesgo para el mes siguiente...")
+    print("Creando target binario de alta presión para el mes siguiente...")
     df_entrenamiento = crear_objetivo_futuro(df)
     filas_eliminadas = filas_antes_objetivo - len(df_entrenamiento)
     df_entrenamiento = df_entrenamiento[COLUMNAS_SALIDA]
@@ -437,17 +483,19 @@ def preparar_dataset() -> pd.DataFrame:
     if huellas_raw(RAW_DATA_DIR) != fuentes:
         raise ValueError("Los RAW cambiaron durante la preparación; vuelva a ejecutar sin modificar las fuentes.")
 
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    df_entrenamiento.to_csv(OUTPUT_PATH, index=False, encoding="utf-8-sig")
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    if output_dir is not None:
+        df.to_csv(processed_dir / "meses_antes_target.csv", index=False, encoding="utf-8-sig")
+    df_entrenamiento.to_csv(output_path, index=False, encoding="utf-8-sig")
     _guardar_metadata_dataset(
         df, df_entrenamiento, percentiles, tratamiento, fuentes,
-        normalizacion_codigo_ipress,
+        normalizacion_codigo_ipress, output_path=output_path, metadata_path=metadata_path,
     )
 
     periodos = sorted(df["anio"].astype(str) + "-" + df["mes"].astype(str).str.zfill(2))
     print("\nDataset preparado correctamente.")
-    print(f"Archivo generado: {OUTPUT_PATH}")
-    print(f"Metadata generada: {DATASET_METADATA_PATH}")
+    print(f"Archivo generado: {output_path}")
+    print(f"Metadata generada: {metadata_path}")
     print(f"Filas combinadas: {filas_combinadas}")
     print(f"Filas después de limpieza: {filas_limpias}")
     print(f"Filas después del filtro Lima pública: {filas_filtradas}")
@@ -460,25 +508,16 @@ def preparar_dataset() -> pd.DataFrame:
         f"{periodos[0]} a {periodos[-1]} ({len(set(periodos))} periodos)"
     )
     mostrar_validaciones_indicadores(df)
-    print("\nDistribución de nivel_riesgo_actual:")
-    print(df["nivel_riesgo_actual"].value_counts(dropna=False))
-    print("\nDistribución de nivel_riesgo_siguiente_mes:")
-    print(
-        df_entrenamiento["nivel_riesgo_siguiente_mes"].value_counts(
-            dropna=False
-        )
-    )
-    print("\nDistribución de nivel_riesgo_siguiente_mes_codificado:")
-    print(
-        df_entrenamiento[
-            "nivel_riesgo_siguiente_mes_codificado"
-        ].value_counts(dropna=False).sort_index()
-    )
+    print("\nDistribución del target científico binario:")
+    print(df_entrenamiento[TARGET_BINARIO].value_counts().sort_index())
     return df_entrenamiento
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Prepara target binario t+1 desde D1 RAW.")
+    parser.add_argument("--output-dir", type=Path, default=None, help="Salida alternativa del dataset candidato y auditoría.")
+    args = parser.parse_args()
     try:
-        preparar_dataset()
+        preparar_dataset(args.output_dir)
     except (FileNotFoundError, ValueError, pd.errors.ParserError) as error:
         raise SystemExit(f"Error al preparar el dataset: {error}") from error

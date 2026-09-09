@@ -31,6 +31,7 @@ CONJUNTOS = {'Base': [], 'A': list(LAGS), 'B': [*LAGS, *CAMBIOS, 'aceleracion_oc
              'C': [*LAGS, *CAMBIOS, 'aceleracion_ocupacion', *HISTORIA],
              'D': [*LAGS, *CAMBIOS, 'aceleracion_ocupacion', *HISTORIA, *RIESGO, *MARGENES, *CRECIMIENTO]}
 NUEVAS_FEATURES = CONJUNTOS['D']
+FEATURES_SIN_LEGACY = [c for c in NUEVAS_FEATURES if c not in RIESGO + MARGENES]
 REUTILIZADAS = {
     'cambio_ocupacion_1m': 'tendencia_ocupacion_1m',
     'cambio_ingresos_1m': 'tendencia_ingresos_1m',
@@ -81,23 +82,27 @@ def definiciones_features():
     return definiciones
 
 
-def agregar_features_candidatas(df: pd.DataFrame) -> pd.DataFrame:
+def agregar_features_candidatas(df: pd.DataFrame, *, incluir_legacy: bool = True) -> pd.DataFrame:
     """Lags/ventanas estrictas por grupo; NaN sin imputar; conserva la base.
 
     Las ventanas nuevas exigen todos los meses válidos. Las variables BASE
     reutilizadas conservan su semántica preexistente (promedios parciales y
     tendencia cero ante huecos). No se consultan etiquetas futuras.
+    incluir_legacy=False omite las siete derivadas de categorías 70/85 y no
+    consulta etiquetas; el default mantiene las 69 features productivas.
     """
     requeridas = [*GRUPOS, 'anio', 'mes', 'ocupacion_estimada',
                   'total_pacientes_camas', 'total_camas_disponibles',
-                  'total_ingresos', 'total_egresos', 'presion_ingresos_camas',
-                  'nivel_riesgo_actual_codificado']
+                  'total_ingresos', 'total_egresos', 'presion_ingresos_camas']
+    if incluir_legacy:
+        requeridas.append('nivel_riesgo_actual_codificado')
+    nuevas = NUEVAS_FEATURES if incluir_legacy else FEATURES_SIN_LEGACY
     faltantes = set(requeridas) - set(df.columns)
     if faltantes:
         raise ValueError(f'Faltan columnas: {sorted(faltantes)}')
     if not df.index.is_unique or df[GRUPOS].isna().any().any():
         raise ValueError('Se requieren índices únicos y grupos no nulos.')
-    if set(NUEVAS_FEATURES) & set(df.columns):
+    if set(nuevas) & set(df.columns):
         raise ValueError('Las features candidatas ya existen; no se sobrescriben.')
     r = df[requeridas].copy().reset_index(drop=True)
     fechas = pd.to_datetime(dict(year=r.anio, month=r.mes, day=1), errors='raise')
@@ -111,7 +116,7 @@ def agregar_features_candidatas(df: pd.DataFrame) -> pd.DataFrame:
     r = r.sort_values([*GRUPOS, '_mes'], kind='stable')
     for columna in set(requeridas) - set(GRUPOS) - {'anio', 'mes'}:
         r[columna] = pd.to_numeric(r[columna], errors='coerce').replace([np.inf, -np.inf], np.nan)
-    if not r.nivel_riesgo_actual_codificado.dropna().isin([0, 1, 2]).all():
+    if incluir_legacy and not r.nivel_riesgo_actual_codificado.dropna().isin([0, 1, 2]).all():
         raise ValueError('El riesgo actual debe ser 0, 1, 2 o ausente.')
     grupos = r.groupby(GRUPOS, sort=False, observed=True)
     # Con meses únicos ordenados, diferencia de k meses en k filas implica
@@ -139,24 +144,25 @@ def agregar_features_candidatas(df: pd.DataFrame) -> pd.DataFrame:
         ('promedio_pacientes_camas_3m', 'total_pacientes_camas', 3, 'mean'),
         ('promedio_camas_disponibles_3m', 'total_camas_disponibles', 3, 'mean')]:
         agregar_ventana(salida, columna, k, operacion)
-    for salida, k, medio in [('meses_alto_ultimos_3m', 3, False),
-                             ('meses_alto_ultimos_6m', 6, False),
-                             ('meses_medio_alto_ultimos_3m', 3, True)]:
-        valores = ventana('nivel_riesgo_actual_codificado', k)
-        condiciones = valores.ge(1) if medio else valores.eq(2)
-        r[salida] = condiciones.sum(axis=1).where(valores.notna().all(axis=1))
-    r['meses_consecutivos_alto'] = np.nan
-    for _, grupo in grupos:
-        racha, anterior = 0, None
-        for indice, ordinal, riesgo in zip(grupo.index, grupo['_mes'], grupo.nivel_riesgo_actual_codificado):
-            if anterior is None or ordinal != anterior+1:
-                racha = 0
-            racha = racha+1 if riesgo == 2 else 0
-            r.loc[indice, 'meses_consecutivos_alto'] = racha if pd.notna(riesgo) else np.nan
-            anterior = ordinal
-    r['margen_umbral_alto'] = r.ocupacion_estimada - .85
-    r['margen_umbral_medio'] = r.ocupacion_estimada - .70
-    r['distancia_absoluta_umbral_alto'] = r.margen_umbral_alto.abs()
+    if incluir_legacy:
+        for salida, k, medio in [('meses_alto_ultimos_3m', 3, False),
+                                 ('meses_alto_ultimos_6m', 6, False),
+                                 ('meses_medio_alto_ultimos_3m', 3, True)]:
+            valores = ventana('nivel_riesgo_actual_codificado', k)
+            condiciones = valores.ge(1) if medio else valores.eq(2)
+            r[salida] = condiciones.sum(axis=1).where(valores.notna().all(axis=1))
+        r['meses_consecutivos_alto'] = np.nan
+        for _, grupo in grupos:
+            racha, anterior = 0, None
+            for indice, ordinal, riesgo in zip(grupo.index, grupo['_mes'], grupo.nivel_riesgo_actual_codificado):
+                if anterior is None or ordinal != anterior+1:
+                    racha = 0
+                racha = racha+1 if riesgo == 2 else 0
+                r.loc[indice, 'meses_consecutivos_alto'] = racha if pd.notna(riesgo) else np.nan
+                anterior = ordinal
+        r['margen_umbral_alto'] = r.ocupacion_estimada - .85
+        r['margen_umbral_medio'] = r.ocupacion_estimada - .70
+        r['distancia_absoluta_umbral_alto'] = r.margen_umbral_alto.abs()
     for salida, columna, lag in [('crecimiento_demanda_1m', 'total_pacientes_camas', 'pacientes_camas_lag_1m'),
                                  ('crecimiento_capacidad_1m', 'total_camas_disponibles', 'camas_disponibles_lag_1m')]:
         previo = r[lag].where(r[lag].gt(0) & r[columna].ge(0))
@@ -164,5 +170,5 @@ def agregar_features_candidatas(df: pd.DataFrame) -> pd.DataFrame:
             r[salida] = ((r[columna]-previo)/previo).replace([np.inf, -np.inf], np.nan)
     r['brecha_crecimiento_demanda_capacidad'] = r.crecimiento_demanda_1m - r.crecimiento_capacidad_1m
     resultado = df.copy()
-    resultado[NUEVAS_FEATURES] = r.sort_index()[NUEVAS_FEATURES].replace([np.inf, -np.inf], np.nan).to_numpy()
+    resultado[nuevas] = r.sort_index()[nuevas].replace([np.inf, -np.inf], np.nan).to_numpy()
     return resultado

@@ -91,6 +91,7 @@ def _serie_riesgo(meses: list[int]) -> pd.DataFrame:
             "servicio_hospitalizacion": ["S"] * len(meses),
             "anio": [2024] * len(meses),
             "mes": meses,
+            "ocupacion_estimada": [0.6, 0.8, 0.95][:len(meses)],
             "nivel_riesgo_actual": riesgos,
             "nivel_riesgo_actual_codificado": codigos,
         }
@@ -238,7 +239,15 @@ def test_pipeline_metadata_documenta_etiqueta_observada_sin_percentiles(tmp_path
     assert normalizacion["filas_transformadas"] == 0
     assert info["percentiles_riesgo_actual"] == {}
     assert info["metodo_percentiles"] == "No se utilizan percentiles para construir la etiqueta."
-    definicion = info["definicion_target"]
+    binaria = info["definicion_target"]
+    assert binaria["version"] == "alta_presion_capacidad_t1_v1"
+    assert binaria["comparador"] == ">"
+    assert binaria["umbral"] == 0.90
+    assert binaria["numero_total"] == 2
+    assert binaria["positivos"] == 0
+    assert resultado.alta_presion_capacidad_siguiente_mes.tolist() == [0, 0]
+    assert resultado.ocupacion_siguiente_mes.tolist() == [0.70, 0.85]
+    definicion = info["etiquetas_legacy"]
     assert definicion["version"] == "riesgo_ocupacion_observada_v2"
     assert definicion["nivel_riesgo_actual"] == {
         "bajo": "ocupacion_estimada < 0.70",
