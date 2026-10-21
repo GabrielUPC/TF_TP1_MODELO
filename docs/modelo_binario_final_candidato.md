@@ -59,4 +59,4 @@ su SHA-256; cualquier fallo elimina los dos archivos candidatos incompletos.
 La etiqueta representa presión futura observada, no demanda rechazada ni una
 prueba causal de insuficiencia de camas. La evaluación 2025 mostró desempeño
 algo menor en servicios 25xx: deben monitorearse por separado durante la futura
-integración. El artefacto aún no está conectado a endpoints, backend o frontend.
+integración. La frase anterior describía el estado histórico al cerrar el candidato. En la versión actual, el artefacto se expone mediante FastAPI en `/prediccion-binaria`, Spring Boot lo consume desde el flujo productivo `/predicciones-riesgo/binaria/automatica` y Angular invoca ese flujo desde el dashboard; los niveles BAJO/MEDIO/ALTO permanecen como capa de presentación del Backend.
